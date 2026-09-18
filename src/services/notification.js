@@ -1159,7 +1159,7 @@ export function normalizeTrafficSnapshots(value) {
     const parsed = typeof value === 'string' ? JSON.parse(value || '{}') : value;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
     const result = {};
-    for (const type of ['daily', 'weekly', 'monthly']) {
+    for (const type of ['daily', 'weekly', 'monthly', 'cycle']) {
       const snapshot = parsed[type];
       if (!snapshot || typeof snapshot !== 'object') continue;
       const time = Number(snapshot.time);
@@ -1191,6 +1191,40 @@ export function getTrafficPeriodKeys(timestamp, timezone) {
   };
 }
 
+function getResetDateSerial(year, month, resetDay) {
+  const normalizedResetDay = Number(resetDay);
+  if (!Number.isInteger(normalizedResetDay) || normalizedResetDay < 1 || normalizedResetDay > 31) return NaN;
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  if (normalizedResetDay <= lastDay) {
+    return Math.floor(Date.UTC(year, month - 1, normalizedResetDay) / DAY_MS);
+  }
+  return Math.floor(Date.UTC(year, month, 1) / DAY_MS);
+}
+
+function getTrafficCycleStartSerialForDate(serial, resetDay) {
+  const date = new Date(serial * DAY_MS);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+  const candidates = [];
+  for (const offset of [-2, -1, 0, 1]) {
+    const candidate = new Date(Date.UTC(year, month - 1 + offset, 1));
+    const resetSerial = getResetDateSerial(candidate.getUTCFullYear(), candidate.getUTCMonth() + 1, resetDay);
+    if (Number.isFinite(resetSerial) && resetSerial <= serial) candidates.push(resetSerial);
+  }
+  return candidates.length > 0 ? Math.max(...candidates) : NaN;
+}
+
+function getTrafficCycleStartSerial(timestamp, resetDay, timezone) {
+  const serial = getZonedDateSerial(timestamp, timezone);
+  return Number.isFinite(serial) ? getTrafficCycleStartSerialForDate(serial, resetDay) : NaN;
+}
+
+function isTrafficCycleDue(server, timestamp, timezone) {
+  const serial = getZonedDateSerial(timestamp, timezone);
+  const cycleStart = getTrafficCycleStartSerial(timestamp, server?.reset_day, timezone);
+  return Number(server?.reset_day) > 0 && Number.isFinite(serial) && cycleStart === serial;
+}
+
 export function getDueTrafficReportTypes(timestamp, timezone) {
   const keys = getTrafficPeriodKeys(timestamp, timezone);
   if (!keys) return [];
@@ -1204,7 +1238,7 @@ export function getDueTrafficReportTypes(timestamp, timezone) {
   return types;
 }
 
-function isPreviousTrafficPeriod(snapshot, timestamp, type, timezone) {
+function isPreviousTrafficPeriod(snapshot, timestamp, type, timezone, resetDay) {
   const previousTimestamp = Number(snapshot?.time) * 1000;
   if (!Number.isFinite(previousTimestamp) || previousTimestamp >= timestamp) return false;
 
@@ -1225,6 +1259,14 @@ function isPreviousTrafficPeriod(snapshot, timestamp, type, timezone) {
       (Number(currentParts.year) * 12 + Number(currentParts.month)) -
       (Number(previousParts.year) * 12 + Number(previousParts.month)) === 1;
   }
+  if (type === 'cycle') {
+    const currentStart = getTrafficCycleStartSerial(timestamp, resetDay, timezone);
+    if (!Number.isFinite(currentStart)) return false;
+    const expectedPreviousStart = getTrafficCycleStartSerialForDate(currentStart - 1, resetDay);
+    const previousSerial = getZonedDateSerial(previousTimestamp, timezone);
+    const previousStart = getTrafficCycleStartSerialForDate(previousSerial, resetDay);
+    return Number.isFinite(expectedPreviousStart) && previousStart === expectedPreviousStart;
+  }
   return false;
 }
 
@@ -1235,7 +1277,7 @@ async function claimTrafficReportTypes(db, reportTypes, periodKeys) {
       INSERT INTO settings (key, value) VALUES (?, ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
       WHERE value <> excluded.value
-    `).bind(`traffic_report_last_${type}`, periodKeys[type]).run();
+    `).bind(`traffic_report_last_${type}`, periodKeys[type] || periodKeys.daily).run();
     if (result.meta?.changes > 0) claimedTypes.push(type);
   }
   return claimedTypes;
@@ -1244,10 +1286,10 @@ async function claimTrafficReportTypes(db, reportTypes, periodKeys) {
 async function releaseTrafficReportTypes(db, reportTypes, periodKeys) {
   await Promise.all(reportTypes.map(type => db.prepare(
     'DELETE FROM settings WHERE key = ? AND value = ?'
-  ).bind(`traffic_report_last_${type}`, periodKeys[type]).run()));
+  ).bind(`traffic_report_last_${type}`, periodKeys[type] || periodKeys.daily).run()));
 }
 
-export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, types, timezone = 'UTC', currentInterfaces = {}) {
+export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, types, timezone = 'UTC', currentInterfaces = {}, resetDay = 1) {
   const snapshots = normalizeTrafficSnapshots(value);
   const nowSeconds = Math.floor(timestamp / 1000);
   const rx = Math.max(0, Number(currentRx) || 0);
@@ -1258,7 +1300,7 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
 
   for (const type of types) {
     const previous = snapshots[type];
-    if (previous && isPreviousTrafficPeriod(previous, timestamp, type, timezone)) {
+    if (previous && isPreviousTrafficPeriod(previous, timestamp, type, timezone, resetDay)) {
       const interfaceUsage = Object.fromEntries(Object.entries(interfaces).map(([name, metrics]) => {
         const previousMetrics = previous.interfaces?.[name];
         return [name, previousMetrics
@@ -1296,6 +1338,27 @@ function getInterfaceAliases(server) {
   }
 }
 
+function getInterfaceTrafficSettings(server) {
+  try {
+    const parsed = typeof server?.interface_traffic_settings === 'string'
+      ? JSON.parse(server.interface_traffic_settings || '{}')
+      : server?.interface_traffic_settings;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function formatTrafficCharge(rx, tx, settings) {
+  const calcType = settings?.traffic_calc_type || 'total';
+  const charge = calcType === 'dl' ? rx : calcType === 'ul' ? tx : calcType === 'max' ? Math.max(rx, tx) : rx + tx;
+  const limit = Number(settings?.traffic_limit);
+  const limitText = Number.isFinite(limit) && limit > 0
+    ? ` / ${formatTrafficBytes(limit * 1024 * 1024 * 1024)}`
+    : '';
+  return `  · 计费 ${formatTrafficBytes(charge)}${limitText}`;
+}
+
 export function buildTrafficReportContent(servers, rows, label) {
   const usageByServer = new Map((rows || []).map(row => [row.server_id, row]));
   const lines = [];
@@ -1322,8 +1385,12 @@ export function buildTrafficReportContent(servers, rows, label) {
     totalRx += rx;
     totalTx += tx;
     measuredCount += 1;
-    lines.push(`${server.name}  ↓ ${formatTrafficBytes(rx)} + ↑ ${formatTrafficBytes(tx)}  = ${formatTrafficBytes(rx + tx)}`);
+    const cycleCharge = label === '周期'
+      ? formatTrafficCharge(rx, tx, server)
+      : '';
+    lines.push(`${server.name}  ↓ ${formatTrafficBytes(rx)} + ↑ ${formatTrafficBytes(tx)}  = ${formatTrafficBytes(rx + tx)}${cycleCharge}`);
     const aliases = getInterfaceAliases(server);
+    const interfaceTrafficSettings = getInterfaceTrafficSettings(server);
     for (const [name, interfaceUsage] of Object.entries(usage.interfaces || {})) {
       const interfaceName = aliases[name] ? `${aliases[name]} (${name})` : name;
       if (interfaceUsage?.missing) {
@@ -1332,7 +1399,10 @@ export function buildTrafficReportContent(servers, rows, label) {
       }
       const interfaceRx = Math.max(0, Number(interfaceUsage?.rx_bytes) || 0);
       const interfaceTx = Math.max(0, Number(interfaceUsage?.tx_bytes) || 0);
-      lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}`);
+      const interfaceCharge = label === '周期'
+        ? formatTrafficCharge(interfaceRx, interfaceTx, interfaceTrafficSettings[name])
+        : '';
+      lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}${interfaceCharge}`);
     }
   }
 
@@ -1405,6 +1475,7 @@ export async function checkTrafficReports(db, options = {}) {
   let reportTypes = requestedTypes
     ? dueTypes.filter(type => requestedTypes.has(type))
     : dueTypes;
+  reportTypes = reportTypes.filter(type => type !== 'monthly');
   if (options.staggered && zonedParts) {
     const baseMinute = 0;
     const slot = Number(zonedParts.minute) - baseMinute;
@@ -1413,16 +1484,22 @@ export async function checkTrafficReports(db, options = {}) {
     // On the Sunday 00:00 UTC history-table rotation only, leave a wider
     // buffer before traffic reports. Keep the normal slots otherwise.
     const slotType = isSundayRotationWindow
-      ? (slot === 5 ? 'daily' : slot === 6 ? 'weekly' : slot === 7 ? 'monthly' : null)
-      : (slot === 0 ? 'daily' : slot === 1 ? 'weekly' : slot === 2 ? 'monthly' : null);
+      ? (slot === 5 ? 'daily' : slot === 6 ? 'weekly' : slot === 7 ? 'cycle' : null)
+      : (slot === 0 ? 'daily' : slot === 1 ? 'weekly' : slot === 2 ? 'cycle' : null);
     reportTypes = slotType &&
-      dueTypes.includes(slotType) &&
-      (!requestedTypes || requestedTypes.has(slotType))
+      (slotType === 'cycle' || dueTypes.includes(slotType)) &&
+      (!requestedTypes || requestedTypes.has(slotType) || (slotType === 'cycle' && requestedTypes.has('monthly')))
       ? [slotType]
       : [];
   }
-  if (reportTypes.length === 0) return false;
   const servers = await getAllServers(db);
+  const cycleServers = new Set(servers
+    .filter(server => isTrafficCycleDue(server, now, settings.notification_timezone))
+    .map(server => server.id));
+  const acceptsCycleReports = !requestedTypes || requestedTypes.has('cycle') || requestedTypes.has('monthly');
+  reportTypes = reportTypes.filter(type => type !== 'cycle' || cycleServers.size > 0);
+  if (!options.staggered && acceptsCycleReports && cycleServers.size > 0) reportTypes.push('cycle');
+  if (reportTypes.length === 0) return false;
   for (const server of servers) {
     server.traffic_snapshots = normalizeTrafficSnapshots(server.traffic_snapshots);
   }
@@ -1436,21 +1513,24 @@ export async function checkTrafficReports(db, options = {}) {
   if (claimedReportTypes.length === 0) return false;
 
   try {
-    const usageRows = { daily: [], weekly: [], monthly: [] };
+    const usageRows = { daily: [], weekly: [], cycle: [] };
 
     for (const server of servers) {
       const metrics = latestMetrics.get(server.id);
       if (!metrics) continue;
+      const serverReportTypes = claimedReportTypes.filter(type => type !== 'cycle' || cycleServers.has(server.id));
+      if (serverReportTypes.length === 0) continue;
       const result = updateTrafficSnapshots(
         server.traffic_snapshots,
         metrics.net_rx,
         metrics.net_tx,
         now,
-        claimedReportTypes,
+        serverReportTypes,
         settings.notification_timezone,
-        metrics.network_interfaces
+        metrics.network_interfaces,
+        server.reset_day
       );
-      for (const type of claimedReportTypes) {
+      for (const type of serverReportTypes) {
         usageRows[type].push(result.usage[type]
           ? { server_id: server.id, ...result.usage[type] }
           : { server_id: server.id, missing: true });
@@ -1465,7 +1545,7 @@ export async function checkTrafficReports(db, options = {}) {
     const reports = [
       ...(claimedReportTypes.includes('daily') ? buildTrafficReportPayloads(servers, usageRows.daily, '每日') : []),
       ...(claimedReportTypes.includes('weekly') ? buildTrafficReportPayloads(servers, usageRows.weekly, '每周') : []),
-      ...(claimedReportTypes.includes('monthly') ? buildTrafficReportPayloads(servers, usageRows.monthly, '每月') : [])
+      ...(claimedReportTypes.includes('cycle') ? buildTrafficReportPayloads(servers, usageRows.cycle, '周期') : [])
     ];
 
     for (const report of reports) {

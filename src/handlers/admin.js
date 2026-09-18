@@ -51,6 +51,26 @@ function normalizeInterfaceAliases(value) {
   return JSON.stringify(result);
 }
 
+function normalizeInterfaceTrafficSettings(value) {
+  if (value === undefined || value === null || value === '') return '{}';
+  let raw;
+  try { raw = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { return null; }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const result = {};
+  for (const [name, settings] of Object.entries(raw)) {
+    const key = String(name).trim();
+    if (!key || key.length > 64 || !settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+    const trafficLimit = settings.traffic_limit === '' || settings.traffic_limit === null || settings.traffic_limit === undefined
+      ? ''
+      : Number(settings.traffic_limit);
+    if (!Number.isFinite(trafficLimit) || trafficLimit < 0) return null;
+    const calcType = String(settings.traffic_calc_type || 'total');
+    if (!['total', 'ul', 'dl', 'max'].includes(calcType)) return null;
+    result[key] = { traffic_limit: trafficLimit, traffic_calc_type: calcType };
+  }
+  return JSON.stringify(result);
+}
+
 function normalizeServerBillingData(data = {}) {
   const billingCycle = normalizeBillingCycle(data.billing_cycle || detectBillingCycle(data.price));
   const autoRenewal = normalizeBooleanFlag(data.auto_renewal);
@@ -1014,7 +1034,7 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
       });
     }
     else if (data.action === 'edit') {
-      const { id, name, server_group, region, tags, note, price, billing_cycle, auto_renewal, currency, expire_date, traffic_limit, traffic_calc_type, interface: networkInterfaceInput, interface_aliases, reset_day, collect_interval, report_interval, wss_report_interval, connection_mode, ping_mode, auto_update, custom_ct, custom_cu, custom_cm, custom_bd, node_1, node_2, node_3, node_4, rx_correction, tx_correction, offline_notify_disabled, is_hidden } = data;
+      const { id, name, server_group, region, tags, note, price, billing_cycle, auto_renewal, currency, expire_date, traffic_limit, traffic_calc_type, interface: networkInterfaceInput, interface_aliases, interface_traffic_settings, reset_day, collect_interval, report_interval, wss_report_interval, connection_mode, ping_mode, auto_update, custom_ct, custom_cu, custom_cm, custom_bd, node_1, node_2, node_3, node_4, rx_correction, tx_correction, offline_notify_disabled, is_hidden } = data;
       if (!id || !isValidUUID(id)) {
         return createBadRequestResponse('invalidServerId');
       }
@@ -1042,6 +1062,8 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
       }
       const interfaceAliases = normalizeInterfaceAliases(interface_aliases);
       if (interfaceAliases === null) return createBadRequestResponse('invalidInterfaceAliases');
+      const interfaceTrafficSettings = normalizeInterfaceTrafficSettings(interface_traffic_settings);
+      if (interfaceTrafficSettings === null) return createBadRequestResponse('invalidInterfaceTrafficSettings');
       const safeTags = String(tags || '')
         .split(',')
         .map(tag => tag.trim().replace(/[^\p{L}\p{N} ._\-]/gu, '').slice(0, 32))
@@ -1071,7 +1093,7 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
       try {
         await env.DB.prepare(`
           UPDATE servers
-          SET name = ?, server_group = ?, region = ?, tags = ?, note = ?, price = ?, billing_cycle = ?, auto_renewal = ?, currency = ?, expire_date = ?, traffic_limit = ?, traffic_calc_type = ?, "interface" = ?, interface_aliases = ?, reset_day = ?, collect_interval = ?, report_interval = ?, wss_report_interval = ?, connection_mode = ?, ping_mode = ?, auto_update = ?, custom_ct = ?, custom_cu = ?, custom_cm = ?, custom_bd = ?, node_1 = ?, node_2 = ?, node_3 = ?, node_4 = ?, rx_correction = ?, tx_correction = ?, offline_notify_disabled = ?, is_hidden = ?
+          SET name = ?, server_group = ?, region = ?, tags = ?, note = ?, price = ?, billing_cycle = ?, auto_renewal = ?, currency = ?, expire_date = ?, traffic_limit = ?, traffic_calc_type = ?, "interface" = ?, interface_aliases = ?, interface_traffic_settings = ?, reset_day = ?, collect_interval = ?, report_interval = ?, wss_report_interval = ?, connection_mode = ?, ping_mode = ?, auto_update = ?, custom_ct = ?, custom_cu = ?, custom_cm = ?, custom_bd = ?, node_1 = ?, node_2 = ?, node_3 = ?, node_4 = ?, rx_correction = ?, tx_correction = ?, offline_notify_disabled = ?, is_hidden = ?
           WHERE id = ?
         `).bind(
           name || '',
@@ -1088,6 +1110,7 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
           traffic_calc_type || 'total',
           networkInterfaces.value,
           interfaceAliases,
+          interfaceTrafficSettings,
           normalizedAgentConfig.reset_day,
           normalizedAgentConfig.collect_interval,
           normalizedAgentConfig.report_interval,
@@ -1214,15 +1237,22 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
           skippedIds.push(server.id);
           continue;
         }
+        const interfaceAliases = normalizeInterfaceAliases(server.interface_aliases);
+        const interfaceTrafficSettings = normalizeInterfaceTrafficSettings(server.interface_traffic_settings);
+        if (interfaceAliases === null || interfaceTrafficSettings === null) {
+          skipped++;
+          skippedIds.push(server.id);
+          continue;
+        }
 
         try {
           await env.DB.prepare(`
             INSERT INTO servers (id, name, server_group, region, tags, note, price, billing_cycle, auto_renewal,
               currency, expire_date,
-              traffic_limit, traffic_calc_type, "interface", reset_day, collect_interval, report_interval, wss_report_interval, connection_mode, ping_mode,
+              traffic_limit, traffic_calc_type, "interface", interface_aliases, interface_traffic_settings, reset_day, collect_interval, report_interval, wss_report_interval, connection_mode, ping_mode,
               auto_update, custom_ct, custom_cu, custom_cm, custom_bd, node_1, node_2, node_3, node_4, rx_correction, tx_correction,
               offline_notify_disabled, is_hidden, sort_order, history_partition_id, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).bind(
             server.id,
             server.name || '',
@@ -1238,6 +1268,8 @@ export async function handleAdminAPI(request, env, sys, loadFullSettings = null,
             server.traffic_limit || '',
             server.traffic_calc_type || 'total',
             networkInterfaces.value,
+            interfaceAliases,
+            interfaceTrafficSettings,
             server.reset_day ?? 1,
             server.collect_interval ?? 0,
             server.report_interval ?? 60,

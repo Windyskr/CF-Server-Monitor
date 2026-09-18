@@ -157,6 +157,10 @@
           <textarea v-model.trim="editForm.interface_aliases" class="form-input" rows="2" placeholder='{"eth0":"公网","eth1":"内网"}'></textarea>
         </div>
         <div class="form-group flex-1">
+          <label class="form-label">{{ trans.interfaceTrafficSettings || '网卡流量设置' }}</label>
+          <textarea v-model.trim="editForm.interface_traffic_settings" class="form-input" rows="2" placeholder='{"eth0":{"traffic_limit":1000,"traffic_calc_type":"total"}}'></textarea>
+        </div>
+        <div class="form-group flex-1">
           <label class="form-label">
             {{ trans.rxCorrection }} (GB)
             <HelpTooltip :text="trans.correctionHint" />
