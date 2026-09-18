@@ -1352,6 +1352,20 @@ function getCurrentCycleTrafficUsage(value, currentRx, currentTx, timestamp, tim
   };
 }
 
+export function seedCycleBaseline(snapshots, currentRx, currentTx, timestamp, currentInterfaces, resetDay) {
+  if (Number(resetDay) > 0 && !snapshots.cycle) {
+    const interfaces = normalizeTrafficInterfaces(currentInterfaces);
+    snapshots.cycle = {
+      time: Math.floor(timestamp / 1000),
+      rx_bytes: Math.max(0, Number(currentRx) || 0),
+      tx_bytes: Math.max(0, Number(currentTx) || 0),
+      ...(Object.keys(interfaces).length > 0 ? { interfaces } : {})
+    };
+    return true;
+  }
+  return false;
+}
+
 function getInterfaceAliases(server) {
   try {
     const parsed = typeof server?.interface_aliases === 'string'
@@ -1430,6 +1444,10 @@ export function buildTrafficReportContent(servers, rows, label) {
       lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}${interfaceCharge}`);
     }
     if (label === '每日' && usage.current_cycle) {
+      if (usage.current_cycle.baseline) {
+        lines.push('  本周期累计  基线已建立，明日起显示真实用量');
+        continue;
+      }
       if (usage.current_cycle.missing) {
         lines.push('  本周期累计  暂无周期基线');
         continue;
@@ -1574,6 +1592,18 @@ export async function checkTrafficReports(db, options = {}) {
         metrics.network_interfaces,
         server.reset_day
       );
+      let cycleBaselineSeeded = false;
+      if (serverReportTypes.includes('daily')) {
+        cycleBaselineSeeded = seedCycleBaseline(
+          result.snapshots,
+          metrics.net_rx,
+          metrics.net_tx,
+          now,
+          metrics.network_interfaces,
+          server.reset_day
+        );
+        if (cycleBaselineSeeded) result.changed = true;
+      }
       for (const type of serverReportTypes) {
         const currentCycle = type === 'daily'
           ? getCurrentCycleTrafficUsage(
@@ -1586,6 +1616,9 @@ export async function checkTrafficReports(db, options = {}) {
               server.reset_day
             )
           : null;
+        if (type === 'daily' && currentCycle && cycleBaselineSeeded) {
+          currentCycle.baseline = true;
+        }
         usageRows[type].push(result.usage[type]
           ? { server_id: server.id, ...result.usage[type], ...(currentCycle ? { current_cycle: currentCycle } : {}) }
           : { server_id: server.id, missing: true });
