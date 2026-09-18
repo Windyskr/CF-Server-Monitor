@@ -1327,6 +1327,31 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
   return { snapshots, usage, changed };
 }
 
+function getCurrentCycleTrafficUsage(value, currentRx, currentTx, timestamp, timezone, currentInterfaces, resetDay) {
+  const snapshots = normalizeTrafficSnapshots(value);
+  const previous = snapshots.cycle;
+  const currentCycleStart = getTrafficCycleStartSerial(timestamp, resetDay, timezone);
+  if (!previous || !Number.isFinite(currentCycleStart) || Number(resetDay) <= 0) return { missing: true };
+  const previousCycleStart = getTrafficCycleStartSerial(Number(previous.time) * 1000, resetDay, timezone);
+  if (previousCycleStart !== currentCycleStart) return { missing: true };
+
+  const interfaces = normalizeTrafficInterfaces(currentInterfaces);
+  const interfaceUsage = Object.fromEntries(Object.entries(interfaces).map(([name, metrics]) => {
+    const previousMetrics = previous.interfaces?.[name];
+    return [name, previousMetrics
+      ? {
+          rx_bytes: calculateTrafficDelta(metrics.rx_bytes, previousMetrics.rx_bytes),
+          tx_bytes: calculateTrafficDelta(metrics.tx_bytes, previousMetrics.tx_bytes)
+        }
+      : { missing: true }];
+  }));
+  return {
+    rx_bytes: calculateTrafficDelta(currentRx, previous.rx_bytes),
+    tx_bytes: calculateTrafficDelta(currentTx, previous.tx_bytes),
+    ...(Object.keys(interfaceUsage).length > 0 ? { interfaces: interfaceUsage } : {})
+  };
+}
+
 function getInterfaceAliases(server) {
   try {
     const parsed = typeof server?.interface_aliases === 'string'
@@ -1403,6 +1428,25 @@ export function buildTrafficReportContent(servers, rows, label) {
         ? formatTrafficCharge(interfaceRx, interfaceTx, interfaceTrafficSettings[name])
         : '';
       lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}${interfaceCharge}`);
+    }
+    if (label === '每日' && usage.current_cycle) {
+      if (usage.current_cycle.missing) {
+        lines.push('  本周期累计  暂无周期基线');
+        continue;
+      }
+      const cycleRx = Math.max(0, Number(usage.current_cycle.rx_bytes) || 0);
+      const cycleTx = Math.max(0, Number(usage.current_cycle.tx_bytes) || 0);
+      lines.push(`  本周期累计  ↓ ${formatTrafficBytes(cycleRx)} + ↑ ${formatTrafficBytes(cycleTx)}  = ${formatTrafficBytes(cycleRx + cycleTx)}${formatTrafficCharge(cycleRx, cycleTx, server)}`);
+      for (const [name, interfaceUsage] of Object.entries(usage.current_cycle.interfaces || {})) {
+        const interfaceName = aliases[name] ? `${aliases[name]} (${name})` : name;
+        if (interfaceUsage?.missing) {
+          lines.push(`    ${interfaceName}  暂无周期基线`);
+          continue;
+        }
+        const interfaceRx = Math.max(0, Number(interfaceUsage.rx_bytes) || 0);
+        const interfaceTx = Math.max(0, Number(interfaceUsage.tx_bytes) || 0);
+        lines.push(`    ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}${formatTrafficCharge(interfaceRx, interfaceTx, interfaceTrafficSettings[name])}`);
+      }
     }
   }
 
@@ -1531,8 +1575,19 @@ export async function checkTrafficReports(db, options = {}) {
         server.reset_day
       );
       for (const type of serverReportTypes) {
+        const currentCycle = type === 'daily'
+          ? getCurrentCycleTrafficUsage(
+              result.snapshots,
+              metrics.net_rx,
+              metrics.net_tx,
+              now,
+              settings.notification_timezone,
+              metrics.network_interfaces,
+              server.reset_day
+            )
+          : null;
         usageRows[type].push(result.usage[type]
-          ? { server_id: server.id, ...result.usage[type] }
+          ? { server_id: server.id, ...result.usage[type], ...(currentCycle ? { current_cycle: currentCycle } : {}) }
           : { server_id: server.id, missing: true });
       }
       if (result.changed) {
