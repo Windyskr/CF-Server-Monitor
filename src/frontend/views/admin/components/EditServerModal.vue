@@ -153,6 +153,10 @@
           <input type="text" name="edit_interface" autocomplete="off" v-model.trim="editForm.interface" class="form-input" :placeholder="trans.networkInterfacePlaceholder">
         </div>
         <div class="form-group flex-1">
+          <label class="form-label">{{ trans.interfaceAliases || '网卡别名' }}</label>
+          <textarea v-model.trim="editForm.interface_aliases" class="form-input" rows="2" placeholder='{"eth0":"公网","eth1":"内网"}'></textarea>
+        </div>
+        <div class="form-group flex-1">
           <label class="form-label">
             {{ trans.rxCorrection }} (GB)
             <HelpTooltip :text="trans.correctionHint" />

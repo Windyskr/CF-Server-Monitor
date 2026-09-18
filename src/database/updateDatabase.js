@@ -151,6 +151,7 @@ export async function addServerColumns(db) {
       traffic_calc_type: "TEXT DEFAULT 'total'",
       traffic_snapshots: "TEXT DEFAULT '{}'",
       interface: "TEXT DEFAULT ''",
+      interface_aliases: "TEXT DEFAULT '{}'",
       history_partition_id: "INTEGER DEFAULT 0",
       timestamp: "INTEGER DEFAULT 0"
     };

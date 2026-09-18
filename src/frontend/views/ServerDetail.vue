@@ -117,7 +117,7 @@
       </div>
       <div class="sysinfo-grid">
         <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
-          <span class="sysinfo-label">🌐 {{ item.name }}</span>
+          <span class="sysinfo-label">🌐 {{ item.label }}</span>
           <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
         </div>
       </div>
@@ -715,8 +715,16 @@ const visibleLossStats = computed(() => visibleLossFields.value.map(item => ({
 })).filter(item => item.value !== null))
 
 const trafficUsageBytes = computed(() => getTrafficUsageBytes(server.value))
+const interfaceAliases = computed(() => {
+  try {
+    const value = server.value.interface_aliases
+    return typeof value === 'string' ? JSON.parse(value || '{}') : (value || {})
+  } catch (_) {
+    return {}
+  }
+})
 const networkInterfaceEntries = computed(() => Object.entries(server.value.network_interfaces || {})
-  .map(([name, metrics]) => ({ name, ...(metrics || {}) }))
+  .map(([name, metrics]) => ({ name, label: interfaceAliases.value[name] ? `${interfaceAliases.value[name]} (${name})` : name, ...(metrics || {}) }))
   .sort((a, b) => a.name.localeCompare(b.name)))
 
 const safeDestroyCharts = () => {

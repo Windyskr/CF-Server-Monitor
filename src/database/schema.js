@@ -90,6 +90,7 @@ export async function initDatabase(db) {
           traffic_calc_type TEXT DEFAULT 'total',
           traffic_snapshots TEXT DEFAULT '{}',
           "interface" TEXT DEFAULT '',
+          interface_aliases TEXT DEFAULT '{}',
           reset_day INTEGER DEFAULT 1,
           collect_interval INTEGER DEFAULT 0,
           report_interval INTEGER DEFAULT 60,
