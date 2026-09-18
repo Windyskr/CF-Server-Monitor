@@ -88,10 +88,6 @@
           <span class="sysinfo-label">⚡ {{ trans.realtimeSpeed }}</span>
           <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_in_speed) }}/s / ↑ {{ formatBytes(server.net_out_speed) }}/s</span>
         </div>
-        <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
-          <span class="sysinfo-label">🌐 {{ item.name }}</span>
-          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
-        </div>
         <div class="sysinfo-item" v-if="server.net_rx_monthly">
           <span class="sysinfo-label">📊 {{ trans.monthlyTraffic }}</span>
           <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_rx_monthly) }} / ↑ {{ formatBytes(server.net_tx_monthly) }}</span>
@@ -111,6 +107,18 @@
         <div class="sysinfo-item">
           <span class="sysinfo-label">⏰ {{ trans.lastUpdate }}</span>
           <span class="sysinfo-value sysinfo-small">{{ lastUpdateText }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="networkInterfaceEntries.length" class="host-card">
+      <div class="host-card-header">
+        <div class="host-name"><span class="prompt">root@</span><span>{{ trans.networkInterfaces || 'Network Interfaces' }}</span><span style="color: var(--text-muted);">:~#</span></div>
+      </div>
+      <div class="sysinfo-grid">
+        <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
+          <span class="sysinfo-label">🌐 {{ item.name }}</span>
+          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
         </div>
       </div>
     </div>
