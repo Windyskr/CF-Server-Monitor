@@ -1136,6 +1136,24 @@ export function calculateTrafficDelta(current, previous) {
   return currentValue >= previousValue ? currentValue - previousValue : currentValue;
 }
 
+export function normalizeTrafficInterfaces(value) {
+  try {
+    const parsed = typeof value === 'string' ? JSON.parse(value || '{}') : value;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const result = {};
+    for (const [name, metrics] of Object.entries(parsed)) {
+      if (!name || !metrics || typeof metrics !== 'object' || Array.isArray(metrics)) continue;
+      result[name] = {
+        rx_bytes: Math.max(0, Number(metrics.rx_bytes ?? metrics.net_rx) || 0),
+        tx_bytes: Math.max(0, Number(metrics.tx_bytes ?? metrics.net_tx) || 0)
+      };
+    }
+    return result;
+  } catch (_) {
+    return {};
+  }
+}
+
 export function normalizeTrafficSnapshots(value) {
   try {
     const parsed = typeof value === 'string' ? JSON.parse(value || '{}') : value;
@@ -1146,10 +1164,12 @@ export function normalizeTrafficSnapshots(value) {
       if (!snapshot || typeof snapshot !== 'object') continue;
       const time = Number(snapshot.time);
       if (!Number.isFinite(time) || time <= 0) continue;
+      const interfaces = normalizeTrafficInterfaces(snapshot.interfaces);
       result[type] = {
         time,
         rx_bytes: Math.max(0, Number(snapshot.rx_bytes) || 0),
-        tx_bytes: Math.max(0, Number(snapshot.tx_bytes) || 0)
+        tx_bytes: Math.max(0, Number(snapshot.tx_bytes) || 0),
+        ...(Object.keys(interfaces).length > 0 ? { interfaces } : {})
       };
     }
     return result;
@@ -1227,26 +1247,53 @@ async function releaseTrafficReportTypes(db, reportTypes, periodKeys) {
   ).bind(`traffic_report_last_${type}`, periodKeys[type]).run()));
 }
 
-export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, types, timezone = 'UTC') {
+export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, types, timezone = 'UTC', currentInterfaces = {}) {
   const snapshots = normalizeTrafficSnapshots(value);
   const nowSeconds = Math.floor(timestamp / 1000);
   const rx = Math.max(0, Number(currentRx) || 0);
   const tx = Math.max(0, Number(currentTx) || 0);
+  const interfaces = normalizeTrafficInterfaces(currentInterfaces);
   const usage = {};
   let changed = false;
 
   for (const type of types) {
     const previous = snapshots[type];
     if (previous && isPreviousTrafficPeriod(previous, timestamp, type, timezone)) {
+      const interfaceUsage = Object.fromEntries(Object.entries(interfaces).map(([name, metrics]) => {
+        const previousMetrics = previous.interfaces?.[name];
+        return [name, previousMetrics
+          ? {
+              rx_bytes: calculateTrafficDelta(metrics.rx_bytes, previousMetrics.rx_bytes),
+              tx_bytes: calculateTrafficDelta(metrics.tx_bytes, previousMetrics.tx_bytes)
+            }
+          : { missing: true }];
+      }));
       usage[type] = {
         rx_bytes: calculateTrafficDelta(rx, previous.rx_bytes),
-        tx_bytes: calculateTrafficDelta(tx, previous.tx_bytes)
+        tx_bytes: calculateTrafficDelta(tx, previous.tx_bytes),
+        ...(Object.keys(interfaceUsage).length > 0 ? { interfaces: interfaceUsage } : {})
       };
     }
-    snapshots[type] = { time: nowSeconds, rx_bytes: rx, tx_bytes: tx };
+    snapshots[type] = {
+      time: nowSeconds,
+      rx_bytes: rx,
+      tx_bytes: tx,
+      ...(Object.keys(interfaces).length > 0 ? { interfaces } : {})
+    };
     changed = true;
   }
   return { snapshots, usage, changed };
+}
+
+function getInterfaceAliases(server) {
+  try {
+    const parsed = typeof server?.interface_aliases === 'string'
+      ? JSON.parse(server.interface_aliases || '{}')
+      : server?.interface_aliases;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
 }
 
 export function buildTrafficReportContent(servers, rows, label) {
@@ -1276,6 +1323,17 @@ export function buildTrafficReportContent(servers, rows, label) {
     totalTx += tx;
     measuredCount += 1;
     lines.push(`${server.name}  ↓ ${formatTrafficBytes(rx)} + ↑ ${formatTrafficBytes(tx)}  = ${formatTrafficBytes(rx + tx)}`);
+    const aliases = getInterfaceAliases(server);
+    for (const [name, interfaceUsage] of Object.entries(usage.interfaces || {})) {
+      const interfaceName = aliases[name] ? `${aliases[name]} (${name})` : name;
+      if (interfaceUsage?.missing) {
+        lines.push(`  ${interfaceName}  ${missingLabels[label] || '暂无上一周期数据'}`);
+        continue;
+      }
+      const interfaceRx = Math.max(0, Number(interfaceUsage?.rx_bytes) || 0);
+      const interfaceTx = Math.max(0, Number(interfaceUsage?.tx_bytes) || 0);
+      lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}`);
+    }
   }
 
   if (lines.length === 0) return null;
@@ -1389,7 +1447,8 @@ export async function checkTrafficReports(db, options = {}) {
         metrics.net_tx,
         now,
         claimedReportTypes,
-        settings.notification_timezone
+        settings.notification_timezone,
+        metrics.network_interfaces
       );
       for (const type of claimedReportTypes) {
         usageRows[type].push(result.usage[type]
