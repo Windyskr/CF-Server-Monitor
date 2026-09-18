@@ -161,6 +161,13 @@ export function normalizeProbeMetricRow(metrics) {
       normalized[field] = normalizeProbeMetric(normalized[field]);
     }
   }
+  if (typeof normalized.network_interfaces === 'string') {
+    try {
+      normalized.network_interfaces = JSON.parse(normalized.network_interfaces || '{}');
+    } catch (_) {
+      normalized.network_interfaces = {};
+    }
+  }
   return normalized;
 }
 
@@ -175,6 +182,9 @@ export function mergeMetricsIntoServer(server, metrics) {
   server.net_tx = metrics.net_tx || 0;
   server.net_rx_monthly = metrics.net_rx_monthly || 0;
   server.net_tx_monthly = metrics.net_tx_monthly || 0;
+  server.network_interfaces = metrics.network_interfaces && typeof metrics.network_interfaces === 'object'
+    ? metrics.network_interfaces
+    : {};
   server.processes = metrics.processes || 0;
   server.tcp_conn = metrics.tcp_conn || 0;
   server.udp_conn = metrics.udp_conn || 0;

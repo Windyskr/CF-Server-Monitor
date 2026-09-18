@@ -88,6 +88,10 @@
           <span class="sysinfo-label">⚡ {{ trans.realtimeSpeed }}</span>
           <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_in_speed) }}/s / ↑ {{ formatBytes(server.net_out_speed) }}/s</span>
         </div>
+        <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
+          <span class="sysinfo-label">🌐 {{ item.name }}</span>
+          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
+        </div>
         <div class="sysinfo-item" v-if="server.net_rx_monthly">
           <span class="sysinfo-label">📊 {{ trans.monthlyTraffic }}</span>
           <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_rx_monthly) }} / ↑ {{ formatBytes(server.net_tx_monthly) }}</span>
@@ -703,6 +707,9 @@ const visibleLossStats = computed(() => visibleLossFields.value.map(item => ({
 })).filter(item => item.value !== null))
 
 const trafficUsageBytes = computed(() => getTrafficUsageBytes(server.value))
+const networkInterfaceEntries = computed(() => Object.entries(server.value.network_interfaces || {})
+  .map(([name, metrics]) => ({ name, ...(metrics || {}) }))
+  .sort((a, b) => a.name.localeCompare(b.name)))
 
 const safeDestroyCharts = () => {
   try {
