@@ -1379,7 +1379,92 @@ function formatTrafficCharge(rx, tx, settings) {
   return `  · 计费 ${formatTrafficBytes(charge)}${limitText}`;
 }
 
+function formatTrafficSummary(rx, tx, settings) {
+  const calcType = settings?.traffic_calc_type || 'total';
+  const charge = calcType === 'dl' ? rx : calcType === 'ul' ? tx : calcType === 'max' ? Math.max(rx, tx) : rx + tx;
+  const limit = Number(settings?.traffic_limit);
+  return `${formatTrafficBytes(charge)}${Number.isFinite(limit) && limit > 0 ? ` / ${formatTrafficBytes(limit * 1024 * 1024 * 1024)}` : ''}`;
+}
+
+function getInterfaceReportIcon(name, alias) {
+  const label = `${name} ${alias || ''}`.toLowerCase();
+  if (/日本|japan|\bjp\b/.test(label)) return '🇯🇵';
+  if (/iplc|内网|private/.test(label)) return '🔗';
+  return '🌐';
+}
+
+function buildInterfaceTrafficLines(interfaces, aliases, settings) {
+  const entries = Object.entries(interfaces || {});
+  return entries.flatMap(([name, usage], index) => {
+    const alias = aliases[name] || '';
+    const label = alias ? `${name} · ${alias}` : name;
+    const branch = index === entries.length - 1 ? '└' : '├';
+    const indent = index === entries.length - 1 ? '  ' : '│ ';
+    if (usage?.missing) return [`${branch} ${getInterfaceReportIcon(name, alias)} ${label}`, `${indent}暂无数据`];
+    const rx = Math.max(0, Number(usage?.rx_bytes) || 0);
+    const tx = Math.max(0, Number(usage?.tx_bytes) || 0);
+    return [
+      `${branch} ${getInterfaceReportIcon(name, alias)} ${label}`,
+      `${indent}⬇️ ${formatTrafficBytes(rx)}　⬆️ ${formatTrafficBytes(tx)}　Σ ${formatTrafficSummary(rx, tx, settings[name])}`
+    ];
+  });
+}
+
+function buildDailyTrafficReportContent(servers, rows) {
+  const usageByServer = new Map((rows || []).map(row => [row.server_id, row]));
+  const lines = [];
+  const clients = [];
+  for (const server of servers) {
+    const usage = usageByServer.get(server.id);
+    if (!usage) continue;
+    clients.push(server.name);
+    lines.push('━━━━━━━━━━━━━━━━━━', `${server.name}`);
+    if (usage.missing) {
+      lines.push('今日　暂无昨日数据');
+      continue;
+    }
+    const aliases = getInterfaceAliases(server);
+    const interfaceSettings = getInterfaceTrafficSettings(server);
+    const interfaces = usage.interfaces || {};
+    const rx = Math.max(0, Number(usage.rx_bytes) || 0);
+    const tx = Math.max(0, Number(usage.tx_bytes) || 0);
+    lines.push('今日');
+    if (Object.keys(interfaces).length > 0) {
+      lines.push(...buildInterfaceTrafficLines(interfaces, aliases, interfaceSettings));
+    } else {
+      lines.push(`⬇️ ${formatTrafficBytes(rx)}　⬆️ ${formatTrafficBytes(tx)}`, `Σ ${formatTrafficSummary(rx, tx, server)}`);
+    }
+
+    const cycle = usage.current_cycle;
+    if (!cycle) continue;
+    if (cycle?.missing) {
+      lines.push('', `周期　（${cycle?.period_start || '暂无'}）`, 'Agent 暂未提供周期数据');
+      continue;
+    }
+    const cycleRx = Math.max(0, Number(cycle?.rx_bytes) || 0);
+    const cycleTx = Math.max(0, Number(cycle?.tx_bytes) || 0);
+    lines.push('', `周期　（${cycle?.period_start || '暂无'}）`);
+    if (Object.keys(cycle?.interfaces || {}).length > 0) {
+      lines.push(...buildInterfaceTrafficLines(cycle.interfaces, aliases, interfaceSettings));
+    } else {
+      lines.push(`⬇️ ${formatTrafficBytes(cycleRx)}　⬆️ ${formatTrafficBytes(cycleTx)}`, `Σ ${formatTrafficSummary(cycleRx, cycleTx, server)}`);
+    }
+  }
+  if (lines.length === 0) return null;
+  return {
+    msg: lines.join('\n'),
+    context: {
+      event: '每日流量报告',
+      emoji: '📊',
+      clients,
+      count: clients.length,
+      message: lines.join('\n')
+    }
+  };
+}
+
 export function buildTrafficReportContent(servers, rows, label) {
+  if (label === '每日') return buildDailyTrafficReportContent(servers, rows);
   const usageByServer = new Map((rows || []).map(row => [row.server_id, row]));
   const lines = [];
   const clients = [];
@@ -1573,6 +1658,10 @@ export async function checkTrafficReports(db, options = {}) {
         const currentCycle = type === 'daily'
           ? getCurrentCycleTrafficUsage(metrics)
           : null;
+        if (currentCycle) {
+          const startSerial = getTrafficCycleStartSerial(now, server.reset_day, settings.notification_timezone);
+          currentCycle.period_start = Number.isFinite(startSerial) ? formatDateSerial(startSerial) : '未设置';
+        }
         usageRows[type].push(result.usage[type]
           ? { server_id: server.id, ...result.usage[type], ...(currentCycle ? { current_cycle: currentCycle } : {}) }
           : { server_id: server.id, missing: true });

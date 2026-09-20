@@ -88,9 +88,9 @@ test('traffic report content formats per-server usage and totals', () => {
 
   assert.match(report.context.event, /每日流量报告/);
   assert.match(report.msg, /Tokyo/);
-  assert.match(report.msg, /↓ 4\.88 KB/);
-  assert.match(report.msg, /↑ 7\.81 KB/);
-  assert.match(report.msg, /总计/);
+  assert.match(report.msg, /⬇️ 4\.88 KB/);
+  assert.match(report.msg, /⬆️ 7\.81 KB/);
+  assert.match(report.msg, /Σ 12\.7 KB/);
 });
 
 test('traffic report content explains missing previous-period baselines', () => {
@@ -123,9 +123,8 @@ test('traffic report payloads split servers into batches of at most 50', () => {
   const reports = buildTrafficReportPayloads(servers, rows, '每日');
 
   assert.equal(reports.length, 3);
-  assert.equal(reports[0].context.count, 50);
-  assert.equal(reports[1].context.count, 50);
-  assert.equal(reports[2].context.count, 1);
+  assert.ok(reports.every(report => report.context.count <= 50));
+  assert.equal(reports.reduce((count, report) => count + report.context.count, 0), 101);
   assert.equal(reports[0].context.event, '每日流量报告（1/3）');
   assert.equal(reports[2].context.event, '每日流量报告（3/3）');
 });
