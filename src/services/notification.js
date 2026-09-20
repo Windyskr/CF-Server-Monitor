@@ -1405,7 +1405,8 @@ function buildInterfaceTrafficLines(interfaces, aliases, settings) {
     const tx = Math.max(0, Number(usage?.tx_bytes) || 0);
     const lines = [
       `${branch} ${getInterfaceReportIcon(name, alias)} ${label}`,
-      `${indent}⬇️ ${formatTrafficBytes(rx)}　⬆️ ${formatTrafficBytes(tx)}　Σ ${formatTrafficSummary(rx, tx, settings[name])}`
+      `${indent}⬇️ ${formatTrafficBytes(rx)}　⬆️ ${formatTrafficBytes(tx)}`,
+      `${indent}Σ ${formatTrafficSummary(rx, tx, settings[name])}`
     ];
     if (index < entries.length - 1) lines.push('│');
     return lines;
