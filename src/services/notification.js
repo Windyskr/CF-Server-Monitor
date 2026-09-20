@@ -1403,10 +1403,12 @@ function buildInterfaceTrafficLines(interfaces, aliases, settings) {
     if (usage?.missing) return [`${branch} ${getInterfaceReportIcon(name, alias)} ${label}`, `${indent}暂无数据`];
     const rx = Math.max(0, Number(usage?.rx_bytes) || 0);
     const tx = Math.max(0, Number(usage?.tx_bytes) || 0);
-    return [
+    const lines = [
       `${branch} ${getInterfaceReportIcon(name, alias)} ${label}`,
       `${indent}⬇️ ${formatTrafficBytes(rx)}　⬆️ ${formatTrafficBytes(tx)}　Σ ${formatTrafficSummary(rx, tx, settings[name])}`
     ];
+    if (index < entries.length - 1) lines.push('│');
+    return lines;
   });
 }
 
