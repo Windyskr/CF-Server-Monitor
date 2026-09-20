@@ -1327,43 +1327,24 @@ export function updateTrafficSnapshots(value, currentRx, currentTx, timestamp, t
   return { snapshots, usage, changed };
 }
 
-function getCurrentCycleTrafficUsage(value, currentRx, currentTx, timestamp, timezone, currentInterfaces, resetDay) {
-  const snapshots = normalizeTrafficSnapshots(value);
-  const previous = snapshots.cycle;
-  const currentCycleStart = getTrafficCycleStartSerial(timestamp, resetDay, timezone);
-  if (!previous || !Number.isFinite(currentCycleStart) || Number(resetDay) <= 0) return { missing: true };
-  const previousCycleStart = getTrafficCycleStartSerial(Number(previous.time) * 1000, resetDay, timezone);
-  if (previousCycleStart !== currentCycleStart) return { missing: true };
-
-  const interfaces = normalizeTrafficInterfaces(currentInterfaces);
-  const interfaceUsage = Object.fromEntries(Object.entries(interfaces).map(([name, metrics]) => {
-    const previousMetrics = previous.interfaces?.[name];
-    return [name, previousMetrics
-      ? {
-          rx_bytes: calculateTrafficDelta(metrics.rx_bytes, previousMetrics.rx_bytes),
-          tx_bytes: calculateTrafficDelta(metrics.tx_bytes, previousMetrics.tx_bytes)
-        }
-      : { missing: true }];
+function getCurrentCycleTrafficUsage(metrics) {
+  if (!metrics || !Object.prototype.hasOwnProperty.call(metrics, 'net_rx_monthly')) {
+    return { missing: true };
+  }
+  const interfaces = Object.fromEntries(Object.entries(metrics.network_interfaces || {}).map(([name, value]) => {
+    if (!Object.prototype.hasOwnProperty.call(value || {}, 'net_rx_monthly')) {
+      return [name, { missing: true }];
+    }
+    return [name, {
+      rx_bytes: Math.max(0, Number(value.net_rx_monthly) || 0),
+      tx_bytes: Math.max(0, Number(value.net_tx_monthly) || 0)
+    }];
   }));
   return {
-    rx_bytes: calculateTrafficDelta(currentRx, previous.rx_bytes),
-    tx_bytes: calculateTrafficDelta(currentTx, previous.tx_bytes),
-    ...(Object.keys(interfaceUsage).length > 0 ? { interfaces: interfaceUsage } : {})
+    rx_bytes: Math.max(0, Number(metrics.net_rx_monthly) || 0),
+    tx_bytes: Math.max(0, Number(metrics.net_tx_monthly) || 0),
+    ...(Object.keys(interfaces).length > 0 ? { interfaces } : {})
   };
-}
-
-export function seedCycleBaseline(snapshots, currentRx, currentTx, timestamp, currentInterfaces, resetDay) {
-  if (Number(resetDay) > 0 && !snapshots.cycle) {
-    const interfaces = normalizeTrafficInterfaces(currentInterfaces);
-    snapshots.cycle = {
-      time: Math.floor(timestamp / 1000),
-      rx_bytes: Math.max(0, Number(currentRx) || 0),
-      tx_bytes: Math.max(0, Number(currentTx) || 0),
-      ...(Object.keys(interfaces).length > 0 ? { interfaces } : {})
-    };
-    return true;
-  }
-  return false;
 }
 
 function getInterfaceAliases(server) {
@@ -1444,12 +1425,8 @@ export function buildTrafficReportContent(servers, rows, label) {
       lines.push(`  ${interfaceName}  ↓ ${formatTrafficBytes(interfaceRx)} + ↑ ${formatTrafficBytes(interfaceTx)}  = ${formatTrafficBytes(interfaceRx + interfaceTx)}${interfaceCharge}`);
     }
     if (label === '每日' && usage.current_cycle) {
-      if (usage.current_cycle.baseline) {
-        lines.push('  本周期累计  基线已建立，明日起显示真实用量');
-        continue;
-      }
       if (usage.current_cycle.missing) {
-        lines.push('  本周期累计  暂无周期基线');
+        lines.push('  本周期累计  Agent 暂未提供周期数据');
         continue;
       }
       const cycleRx = Math.max(0, Number(usage.current_cycle.rx_bytes) || 0);
@@ -1592,33 +1569,10 @@ export async function checkTrafficReports(db, options = {}) {
         metrics.network_interfaces,
         server.reset_day
       );
-      let cycleBaselineSeeded = false;
-      if (serverReportTypes.includes('daily')) {
-        cycleBaselineSeeded = seedCycleBaseline(
-          result.snapshots,
-          metrics.net_rx,
-          metrics.net_tx,
-          now,
-          metrics.network_interfaces,
-          server.reset_day
-        );
-        if (cycleBaselineSeeded) result.changed = true;
-      }
       for (const type of serverReportTypes) {
         const currentCycle = type === 'daily'
-          ? getCurrentCycleTrafficUsage(
-              result.snapshots,
-              metrics.net_rx,
-              metrics.net_tx,
-              now,
-              settings.notification_timezone,
-              metrics.network_interfaces,
-              server.reset_day
-            )
+          ? getCurrentCycleTrafficUsage(metrics)
           : null;
-        if (type === 'daily' && currentCycle && cycleBaselineSeeded) {
-          currentCycle.baseline = true;
-        }
         usageRows[type].push(result.usage[type]
           ? { server_id: server.id, ...result.usage[type], ...(currentCycle ? { current_cycle: currentCycle } : {}) }
           : { server_id: server.id, missing: true });

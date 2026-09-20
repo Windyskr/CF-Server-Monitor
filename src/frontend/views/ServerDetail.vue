@@ -118,7 +118,7 @@
       <div class="sysinfo-grid">
         <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
           <span class="sysinfo-label">🌐 {{ item.label }}</span>
-          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
+          <span class="sysinfo-value sysinfo-small">累计 ↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }} · 计费 {{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
         </div>
       </div>
     </div>
@@ -723,9 +723,30 @@ const interfaceAliases = computed(() => {
     return {}
   }
 })
+const interfaceTrafficSettings = computed(() => {
+  try {
+    const value = server.value.interface_traffic_settings
+    return typeof value === 'string' ? JSON.parse(value || '{}') : (value || {})
+  } catch (_) {
+    return {}
+  }
+})
 const networkInterfaceEntries = computed(() => Object.entries(server.value.network_interfaces || {})
   .map(([name, metrics]) => ({ name, label: interfaceAliases.value[name] ? `${interfaceAliases.value[name]} (${name})` : name, ...(metrics || {}) }))
   .sort((a, b) => a.name.localeCompare(b.name)))
+const interfaceTrafficUsageBytes = (item) => {
+  const rx = Number(item.net_rx_monthly) || 0
+  const tx = Number(item.net_tx_monthly) || 0
+  const calcType = interfaceTrafficSettings.value[item.name]?.traffic_calc_type || 'total'
+  if (calcType === 'dl') return rx
+  if (calcType === 'ul') return tx
+  if (calcType === 'max') return Math.max(rx, tx)
+  return rx + tx
+}
+const interfaceTrafficLimitText = (name) => {
+  const limit = Number(interfaceTrafficSettings.value[name]?.traffic_limit) || 0
+  return limit > 0 ? ` / ${formatBytes(limit * 1024 * 1024 * 1024)}` : ''
+}
 
 const safeDestroyCharts = () => {
   try {
