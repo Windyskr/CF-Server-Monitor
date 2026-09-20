@@ -118,7 +118,7 @@
       <div class="sysinfo-grid">
         <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
           <span class="sysinfo-label">🌐 {{ item.label }}</span>
-          <span class="sysinfo-value sysinfo-small">累计 ↓ {{ formatBytes(item.net_rx) }} / ↑ {{ formatBytes(item.net_tx) }}<br>本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }} · 计费 {{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
+          <span class="sysinfo-value sysinfo-small">本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }} · 计费 {{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
         </div>
       </div>
     </div>
