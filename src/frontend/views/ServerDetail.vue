@@ -118,7 +118,7 @@
       <div class="sysinfo-grid">
         <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
           <span class="sysinfo-label">🌐 {{ item.label }}</span>
-          <span class="sysinfo-value sysinfo-small">本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }} · 计费 {{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}<br>▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s</span>
+          <span class="sysinfo-value sysinfo-small">▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s<br>本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }} · 计费 {{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}（{{ trafficResetDay }}日重置）</span>
         </div>
       </div>
     </div>
@@ -715,6 +715,10 @@ const visibleLossStats = computed(() => visibleLossFields.value.map(item => ({
 })).filter(item => item.value !== null))
 
 const trafficUsageBytes = computed(() => getTrafficUsageBytes(server.value))
+const trafficResetDay = computed(() => {
+  const day = Number.parseInt(server.value.reset_day, 10)
+  return Number.isInteger(day) && day >= 1 && day <= 31 ? day : 1
+})
 const interfaceAliases = computed(() => {
   try {
     const value = server.value.interface_aliases
