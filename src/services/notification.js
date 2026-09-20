@@ -1389,7 +1389,7 @@ function formatTrafficSummary(rx, tx, settings) {
 function getInterfaceReportIcon(name, alias) {
   const label = `${name} ${alias || ''}`.toLowerCase();
   if (/日本|japan|\bjp\b/.test(label)) return '🇯🇵';
-  if (/iplc|内网|private/.test(label)) return '🔗';
+  if (/iplc|内网|专线|private|net1/.test(label)) return '🔗';
   return '🌐';
 }
 
@@ -1397,7 +1397,7 @@ function buildInterfaceTrafficLines(interfaces, aliases, settings) {
   const entries = Object.entries(interfaces || {});
   return entries.flatMap(([name, usage], index) => {
     const alias = aliases[name] || '';
-    const label = alias ? `${name} · ${alias}` : name;
+    const label = alias || name;
     const branch = index === entries.length - 1 ? '└' : '├';
     const indent = index === entries.length - 1 ? '  ' : '│ ';
     if (usage?.missing) return [`${branch} ${getInterfaceReportIcon(name, alias)} ${label}`, `${indent}暂无数据`];

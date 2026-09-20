@@ -732,7 +732,7 @@ const interfaceTrafficSettings = computed(() => {
   }
 })
 const networkInterfaceEntries = computed(() => Object.entries(server.value.network_interfaces || {})
-  .map(([name, metrics]) => ({ name, label: interfaceAliases.value[name] ? `${interfaceAliases.value[name]} (${name})` : name, ...(metrics || {}) }))
+  .map(([name, metrics]) => ({ name, label: interfaceAliases.value[name] || name, ...(metrics || {}) }))
   .sort((a, b) => a.name.localeCompare(b.name)))
 const interfaceTrafficUsageBytes = (item) => {
   const rx = Number(item.net_rx_monthly) || 0
