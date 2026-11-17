@@ -81,26 +81,6 @@
           <span class="sysinfo-value highlight">{{ server.load_avg || '0.00 0.00 0.00' }}</span>
         </div>
         <div class="sysinfo-item">
-          <span class="sysinfo-label">🌐 {{ trans.totalTraffic }}</span>
-          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_rx) }} / ↑ {{ formatBytes(server.net_tx) }}</span>
-        </div>
-        <div class="sysinfo-item">
-          <span class="sysinfo-label">⚡ {{ trans.realtimeSpeed }}</span>
-          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_in_speed) }}/s / ↑ {{ formatBytes(server.net_out_speed) }}/s</span>
-        </div>
-        <div class="sysinfo-item" v-if="server.net_rx_monthly">
-          <span class="sysinfo-label">📊 {{ trans.monthlyTraffic }}</span>
-          <span class="sysinfo-value sysinfo-small">↓ {{ formatBytes(server.net_rx_monthly) }} / ↑ {{ formatBytes(server.net_tx_monthly) }}</span>
-        </div>
-        <div class="sysinfo-item" v-if="server.net_rx_monthly">
-          <span class="sysinfo-label">📦 {{ trans.monthlyTrafficLimit }}</span>
-          <span class="sysinfo-value sysinfo-small">
-            {{ formatBytes(trafficUsageBytes) }}
-            /
-            {{ server.traffic_limit ? formatBytes(server.traffic_limit * 1024 * 1024 * 1024) : 'Unlimited' }}
-          </span>
-        </div>
-        <div class="sysinfo-item">
           <span class="sysinfo-label">🕐 {{ trans.bootTime }}</span>
           <span class="sysinfo-value sysinfo-small">{{ formatTimestamp(server.boot_time) }}</span>
         </div>
@@ -111,14 +91,28 @@
       </div>
     </div>
 
-    <div v-if="networkInterfaceEntries.length" class="host-card">
+    <div class="host-card traffic-card">
       <div class="host-card-header">
-        <div class="host-name"><span class="prompt">root@</span><span>{{ trans.networkInterfaces || 'Network Interfaces' }}</span><span style="color: var(--text-muted);">:~#</span></div>
+        <div class="host-name"><span class="prompt">root@</span><span>{{ trans.trafficOverview || 'Traffic' }}</span><span style="color: var(--text-muted);">:~#</span></div>
+        <span class="traffic-cycle-meta">
+          {{ trans.trafficCycle || 'Cycle' }} {{ trafficCycle.startText }} → {{ trafficCycle.endText }}
+          · {{ (trans.trafficDaysLeft || '{days} days left').replace('{days}', trafficCycle.daysLeft) }}
+        </span>
       </div>
-      <div class="sysinfo-grid">
-        <div v-for="item in networkInterfaceEntries" :key="item.name" class="sysinfo-item">
-          <span class="sysinfo-label">🌐 {{ item.label }}</span>
-          <span class="sysinfo-value sysinfo-small">▼ {{ formatBytes(item.net_in_speed) }}/s / ▲ {{ formatBytes(item.net_out_speed) }}/s<br>本周期 ↓ {{ formatBytes(item.net_rx_monthly) }} / ↑ {{ formatBytes(item.net_tx_monthly) }}<br>{{ formatBytes(interfaceTrafficUsageBytes(item)) }}{{ interfaceTrafficLimitText(item.name) }}（{{ trafficResetDay }}日）</span>
+      <div class="traffic-rows">
+        <div v-for="row in trafficRows" :key="row.key" class="traffic-row">
+          <div class="traffic-row-head">
+            <span class="traffic-row-name">{{ row.label }}<span v-if="row.sub" class="traffic-row-sub">{{ row.sub }}</span></span>
+            <span class="traffic-row-speed">↓ {{ formatBytes(row.inSpeed) }}/s · ↑ {{ formatBytes(row.outSpeed) }}/s</span>
+          </div>
+          <div class="traffic-row-usage">
+            <span>{{ trans.trafficCycleUsage || 'This cycle' }} ↓ {{ formatBytes(row.rxCycle) }} · ↑ {{ formatBytes(row.txCycle) }}</span>
+            <span class="traffic-row-charge" :class="row.level">
+              {{ formatBytes(row.charge) }}<template v-if="row.limitBytes"> / {{ formatBytes(row.limitBytes) }} · {{ row.percent.toFixed(row.percent >= 10 ? 0 : 1) }}%</template>
+              <template v-if="row.calcLabel"> · {{ row.calcLabel }}</template>
+            </span>
+          </div>
+          <div v-if="row.limitBytes" class="traffic-bar"><span :class="row.level" :style="{ width: `${Math.min(100, row.percent)}%` }"></span></div>
         </div>
       </div>
     </div>
@@ -415,7 +409,6 @@ import Footer from '../components/Footer.vue'
 import OsIcon from '../components/OsIcon.vue'
 import LiveConnectionTimeoutModal from '../components/LiveConnectionTimeoutModal.vue'
 import { fetchServerDetail, fetchAllHistory, fetchConfig, formatBytes, isAdminLoggedIn, createLiveSocket, getFlagRegionCode, isServerOnline, normalizeLiveSocketTimeoutMinutes } from '../utils/api.js'
-import { getTrafficUsageBytes } from '../composables/useServerCardData'
 import { getPublicAssetUrl } from '../utils/config.js'
 import Chart from 'chart.js/auto'
 import 'chartjs-adapter-date-fns'
@@ -805,7 +798,6 @@ const visibleLossStats = computed(() => visibleLossFields.value.map(item => ({
   value: avgLossRefs[item.lossField].value
 })).filter(item => item.value !== null))
 
-const trafficUsageBytes = computed(() => getTrafficUsageBytes(server.value))
 const trafficResetDay = computed(() => {
   const day = Number.parseInt(server.value.reset_day, 10)
   return Number.isInteger(day) && day >= 1 && day <= 31 ? day : 1
@@ -838,10 +830,66 @@ const interfaceTrafficUsageBytes = (item) => {
   if (calcType === 'max') return Math.max(rx, tx)
   return rx + tx
 }
-const interfaceTrafficLimitText = (name) => {
-  const limit = Number(interfaceTrafficSettings.value[name]?.traffic_limit) || 0
-  return limit > 0 ? ` / ${formatBytes(limit * 1024 * 1024 * 1024)}` : ''
+const TRAFFIC_CALC_TYPE_KEYS = { dl: 'trafficCalcDownload', ul: 'trafficCalcUpload', max: 'trafficCalcMax' }
+const TRAFFIC_CALC_TYPE_FALLBACKS = { dl: 'download only', ul: 'upload only', max: 'max direction' }
+const buildTrafficRow = (key, label, sub, metrics, settings) => {
+  const rxCycle = Number(metrics.net_rx_monthly) || 0
+  const txCycle = Number(metrics.net_tx_monthly) || 0
+  const calcType = settings?.traffic_calc_type || 'total'
+  const charge = calcType === 'dl' ? rxCycle : calcType === 'ul' ? txCycle : calcType === 'max' ? Math.max(rxCycle, txCycle) : rxCycle + txCycle
+  const limitBytes = (Number(settings?.traffic_limit) || 0) * 1024 * 1024 * 1024
+  const percent = limitBytes > 0 ? charge / limitBytes * 100 : 0
+  return {
+    key,
+    label,
+    sub,
+    inSpeed: Number(metrics.net_in_speed) || 0,
+    outSpeed: Number(metrics.net_out_speed) || 0,
+    rxCycle,
+    txCycle,
+    charge,
+    limitBytes,
+    percent,
+    level: percent >= 100 ? 'danger' : percent >= 80 ? 'warning' : '',
+    calcLabel: TRAFFIC_CALC_TYPE_KEYS[calcType]
+      ? (trans.value[TRAFFIC_CALC_TYPE_KEYS[calcType]] || TRAFFIC_CALC_TYPE_FALLBACKS[calcType])
+      : ''
+  }
 }
+// One row per interface when the agent reports them; the server-wide row is
+// kept only without interfaces or when a server-level limit applies.
+const trafficRows = computed(() => {
+  const rows = networkInterfaceEntries.value.map(item => buildTrafficRow(
+    item.name,
+    item.label,
+    item.label !== item.name ? item.name : '',
+    item,
+    interfaceTrafficSettings.value[item.name]
+  ))
+  if (rows.length === 0 || Number(server.value.traffic_limit) > 0) {
+    rows.unshift(buildTrafficRow('__server', trans.value.trafficAllInterfaces || 'All', '', server.value, server.value))
+  }
+  return rows
+})
+const trafficCycle = computed(() => {
+  const resetDay = trafficResetDay.value
+  const now = new Date()
+  const resetDate = (year, month) => {
+    const lastDay = new Date(year, month + 1, 0).getDate()
+    return resetDay <= lastDay ? new Date(year, month, resetDay) : new Date(year, month + 1, 1)
+  }
+  let start = resetDate(now.getFullYear(), now.getMonth())
+  if (start > now) start = resetDate(now.getFullYear(), now.getMonth() - 1)
+  let end = resetDate(start.getFullYear(), start.getMonth() + 1)
+  if (end <= start) end = resetDate(start.getFullYear(), start.getMonth() + 2)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const pad = value => String(value).padStart(2, '0')
+  return {
+    startText: `${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
+    endText: `${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
+    daysLeft: Math.max(0, Math.round((end - today) / 86400000))
+  }
+})
 
 const safeDestroyCharts = () => {
   try {

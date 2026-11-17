@@ -3090,6 +3090,85 @@ body::before {
     box-shadow: 0 0 6px var(--accent-red);
 }
 
+/* Traffic overview card (server detail) */
+.traffic-cycle-meta {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.traffic-rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1px;
+}
+
+.traffic-row {
+    background: var(--bg-card);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.traffic-row-head,
+.traffic-row-usage {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.traffic-row-name {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.traffic-row-sub {
+    color: var(--text-secondary);
+    font-weight: 400;
+    margin-left: 6px;
+    font-size: 11px;
+}
+
+.traffic-row-speed {
+    color: var(--accent-cyan);
+}
+
+.traffic-row-charge {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.traffic-row-charge.warning { color: var(--accent-yellow); }
+.traffic-row-charge.danger { color: var(--accent-red); }
+
+.traffic-bar {
+    height: 6px;
+    border-radius: 3px;
+    background: var(--border-color);
+    overflow: hidden;
+}
+
+.traffic-bar span {
+    display: block;
+    height: 100%;
+    background: var(--accent-green);
+    transition: width 0.3s;
+}
+
+.traffic-bar span.warning { background: var(--accent-yellow); }
+.traffic-bar span.danger { background: var(--accent-red); }
+
+@media (max-width: 480px) {
+    .traffic-rows {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* --------------------------------------------------------------------------
    25. System Info Grid
    -------------------------------------------------------------------------- */
