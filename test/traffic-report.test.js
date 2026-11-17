@@ -392,9 +392,7 @@ test('traffic report content formats per-server usage and totals', () => {
 
   assert.match(report.context.event, /每日流量报告/);
   assert.match(report.msg, /Tokyo/);
-  assert.match(report.msg, /⬇️ 4\.88 KB/);
-  assert.match(report.msg, /⬆️ 7\.81 KB/);
-  assert.match(report.msg, /Σ 12\.7 KB/);
+  assert.match(report.msg, /↓4\.88K ↑7\.81K = 12\.7K/);
 });
 
 test('traffic report content explains missing previous-period baselines', () => {

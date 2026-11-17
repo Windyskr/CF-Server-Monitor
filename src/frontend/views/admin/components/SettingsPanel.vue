@@ -329,6 +329,21 @@
           </div>
         </div>
 
+        <div class="form-row">
+          <div class="form-group flex-1">
+            <label class="form-label">
+              {{ trans.notificationDashboardUrl || 'Dashboard URL' }}
+              <HelpTooltip :text="trans.notificationDashboardUrlTip || 'Telegram traffic reports show an Open dashboard button linking here. Leave empty to hide it.'" />
+            </label>
+            <input
+              type="url"
+              v-model.trim="settings.notification_dashboard_url"
+              class="form-input"
+              placeholder="https://monitor.example.com"
+            >
+          </div>
+        </div>
+
         <div v-if="notificationChannel === 'builtin'" class="form-row">
           <div class="form-group flex-1">
             <label class="form-label">{{ trans.telegramToken }}</label>
