@@ -128,12 +128,15 @@
       </div>
       <div class="stat-item">
         <div class="stat-label">{{ trans.totalTraffic }}</div>
-        <div class="stat-main-value stat-main-value-sm">{{ formatBytes(stats.globalNetRx) }} ↓ | ↑ {{ formatBytes(stats.globalNetTx) }}</div>
+        <div class="stat-main-value stat-main-value-sm stat-pair">
+          <span>↓ {{ formatBytes(stats.globalNetRx) }}</span>
+          <span>↑ {{ formatBytes(stats.globalNetTx) }}</span>
+        </div>
       </div>
       <div class="stat-item">
         <div class="stat-label">{{ trans.realtimeSpeed }}</div>
-        <div class="stat-main-value stat-main-value-sm">
-          <span class="stat-net-down-color">↓ {{ formatBytes(stats.globalSpeedIn) }}/s</span> |
+        <div class="stat-main-value stat-main-value-sm stat-pair">
+          <span class="stat-net-down-color">↓ {{ formatBytes(stats.globalSpeedIn) }}/s</span>
           <span class="stat-net-up-color">↑ {{ formatBytes(stats.globalSpeedOut) }}/s</span>
         </div>
       </div>

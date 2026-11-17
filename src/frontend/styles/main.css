@@ -4437,6 +4437,21 @@ body.server-row-drag-active * {
     font-size: 16px;
 }
 
+/* Down/up pairs in the summary bar stay on one line; the font shrinks a
+   little in narrow cells instead of wrapping the unit onto a new line. */
+.stat-pair {
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 14px;
+    white-space: nowrap;
+    font-size: clamp(12px, 6.4cqi, 16px);
+}
+
+.global-stats > .stat-item {
+    container-type: inline-size;
+}
+
 .stat-bar-small {
     width: 60px;
 }
