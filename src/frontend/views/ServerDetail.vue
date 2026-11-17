@@ -112,7 +112,15 @@
               <template v-if="row.calcLabel"> · {{ row.calcLabel }}</template>
             </span>
           </div>
-          <div v-if="row.limitBytes" class="traffic-bar"><span :class="row.level" :style="{ width: `${Math.min(100, row.percent)}%` }"></span></div>
+          <div v-if="row.limitBytes" class="traffic-bar">
+            <span v-if="row.projected !== null" class="traffic-bar-projected" :class="row.projectedLevel" :style="{ width: `${Math.min(100, row.projectedPercent)}%` }"></span>
+            <span class="traffic-bar-used" :class="row.level" :style="{ width: `${Math.min(100, row.percent)}%` }"></span>
+          </div>
+          <div v-if="row.projected !== null" class="traffic-row-forecast" :class="row.projectedLevel">
+            <span>{{ trans.trafficForecast || 'Projected at cycle end' }} {{ formatBytes(row.projected) }}<template v-if="row.limitBytes"> · {{ row.projectedPercent.toFixed(0) }}%</template></span>
+            <span v-if="row.limitBytes && row.projected > row.limitBytes">⚠️ {{ (trans.trafficForecastOver || 'over by {amount}').replace('{amount}', formatBytes(row.projected - row.limitBytes)) }}</span>
+            <span v-else-if="row.limitBytes">{{ (trans.trafficForecastLeft || '{amount} left').replace('{amount}', formatBytes(row.limitBytes - row.projected)) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -839,6 +847,11 @@ const buildTrafficRow = (key, label, sub, metrics, settings) => {
   const charge = calcType === 'dl' ? rxCycle : calcType === 'ul' ? txCycle : calcType === 'max' ? Math.max(rxCycle, txCycle) : rxCycle + txCycle
   const limitBytes = (Number(settings?.traffic_limit) || 0) * 1024 * 1024 * 1024
   const percent = limitBytes > 0 ? charge / limitBytes * 100 : 0
+  // Linear projection to the end of the cycle; skipped during the first day
+  // when the sample is too small to extrapolate.
+  const { elapsedDays, totalDays } = trafficCycle.value
+  const projected = elapsedDays >= 1 && totalDays > 0 ? charge / elapsedDays * totalDays : null
+  const projectedPercent = projected !== null && limitBytes > 0 ? projected / limitBytes * 100 : 0
   return {
     key,
     label,
@@ -851,6 +864,9 @@ const buildTrafficRow = (key, label, sub, metrics, settings) => {
     limitBytes,
     percent,
     level: percent >= 100 ? 'danger' : percent >= 80 ? 'warning' : '',
+    projected,
+    projectedPercent,
+    projectedLevel: projectedPercent >= 100 ? 'danger' : projectedPercent >= 80 ? 'warning' : '',
     calcLabel: TRAFFIC_CALC_TYPE_KEYS[calcType]
       ? (trans.value[TRAFFIC_CALC_TYPE_KEYS[calcType]] || TRAFFIC_CALC_TYPE_FALLBACKS[calcType])
       : ''
@@ -887,7 +903,9 @@ const trafficCycle = computed(() => {
   return {
     startText: `${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
     endText: `${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
-    daysLeft: Math.max(0, Math.round((end - today) / 86400000))
+    daysLeft: Math.max(0, Math.round((end - today) / 86400000)),
+    elapsedDays: Math.max(0, (now - start) / 86400000),
+    totalDays: Math.round((end - start) / 86400000)
   }
 })
 

@@ -3442,15 +3442,39 @@ label.checkbox-item small {
     overflow: hidden;
 }
 
+.traffic-bar {
+    position: relative;
+}
+
 .traffic-bar span {
+    position: absolute;
+    left: 0;
+    top: 0;
     display: block;
     height: 100%;
+    border-radius: 3px;
     background: var(--accent-green);
     transition: width 0.3s;
 }
 
 .traffic-bar span.warning { background: var(--accent-yellow); }
 .traffic-bar span.danger { background: var(--accent-red); }
+
+.traffic-bar span.traffic-bar-projected {
+    opacity: 0.3;
+}
+
+.traffic-row-forecast {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.traffic-row-forecast.warning { color: var(--accent-yellow); }
+.traffic-row-forecast.danger { color: var(--accent-red); }
 
 @media (max-width: 480px) {
     .traffic-rows {
