@@ -160,6 +160,7 @@ export async function addServerColumns(db) {
       auto_renewal: "TEXT DEFAULT '0'",
       currency: "TEXT DEFAULT '¥'",
       reset_day: "INTEGER DEFAULT 1",
+      reset_time: "TEXT DEFAULT ''",
       collect_interval: "INTEGER DEFAULT 0",
       report_interval: "INTEGER DEFAULT 60",
       wss_report_interval: "INTEGER DEFAULT 2",

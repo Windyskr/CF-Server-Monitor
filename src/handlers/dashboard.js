@@ -202,7 +202,9 @@ export async function handleServerAPI(request, env, sys) {
   mergeMetricsIntoServer(server, latestMetrics);
   server.latestReportUpdates = realtimeState.latestReportUpdates;
   server.sysConfig = {
-    long_history_points: Number(normalizeLongHistoryPoints(sys.long_history_points))
+    long_history_points: Number(normalizeLongHistoryPoints(sys.long_history_points)),
+    // Traffic cycles with a reset time follow this zone.
+    notification_timezone: sys.notification_timezone || 'UTC'
   };
   
   return createSuccessResponse(omitNullLossProbeFields(withoutPrivateServerFields(server)));

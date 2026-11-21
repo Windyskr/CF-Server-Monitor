@@ -668,7 +668,7 @@ test('WSS agent config push uses string body and structured payload', () => {
         kind: 'agent-report',
         authenticated: true,
         serverId: 'server-1',
-        configSchema: '7',
+        configSchema: '8',
         configMd5: 'none'
       };
     },
@@ -678,13 +678,13 @@ test('WSS agent config push uses string body and structured payload', () => {
   };
   const broadcaster = makeBroadcaster([ws]);
 
-  const result = broadcaster._pushAgentConfigFrame('server-1', makeDescriptor());
+  const result = broadcaster._pushAgentConfigFrame('server-1', makeDescriptor(undefined, 8));
 
   assert.deepEqual(result, { matched: 1, delivered: 1 });
   assert.equal(sent.length, 1);
   assert.equal(sent[0].type, 'config');
-  assert.equal(sent[0].body, makeDescriptor().serialized);
-  assert.equal(sent[0].config_body, makeDescriptor().serialized);
+  assert.equal(sent[0].body, makeDescriptor(undefined, 8).serialized);
+  assert.equal(sent[0].config_body, makeDescriptor(undefined, 8).serialized);
   assert.equal(sent[0].payload.report_interval, 60);
   assert.equal(sent[0].payload.connection_mode, 'auto');
   assert.equal(sent[0].payload.ping_mode, 'tcp');

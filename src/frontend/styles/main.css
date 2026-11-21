@@ -5275,6 +5275,17 @@ body.mikus-theme .mikus-stats-mascot-img {
     flex: 1;
 }
 
+.reset-day-time {
+    display: flex;
+    gap: 6px;
+}
+
+.reset-day-time > .form-select,
+.reset-day-time > .form-input {
+    flex: 1;
+    min-width: 0;
+}
+
 .cmd-input-wrapper.copyable {
     cursor: pointer;
     transition: all 0.2s;

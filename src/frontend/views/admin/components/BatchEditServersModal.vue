@@ -65,6 +65,9 @@
               <option v-for="day in 31" :key="day" :value="day">{{ day }}</option>
             </select>
           </BatchEditField>
+          <BatchEditField :enabled="enabled.reset_time" :label="trans.trafficResetTime" @toggle="toggleField('reset_time', $event)">
+            <input type="time" v-model="form.reset_time" class="form-input" :disabled="!enabled.reset_time" :title="trans.trafficResetTimeTip">
+          </BatchEditField>
           <BatchEditField :enabled="enabled.rx_correction" :label="`${trans.rxCorrection} (GB)`" @toggle="toggleField('rx_correction', $event)">
             <input type="number" v-model="form.rx_correction" class="form-input" :disabled="!enabled.rx_correction" min="0" step="0.1">
           </BatchEditField>

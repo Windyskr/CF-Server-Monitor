@@ -422,7 +422,7 @@ import Chart from 'chart.js/auto'
 import 'chartjs-adapter-date-fns'
 import { t, currentLang, useTranslation } from '../utils/i18n'
 import { CHART, HISTORY } from '../utils/constants'
-import { formatDateTime, normalizeTimestamp as normalizeMetricTimestamp } from '../utils/time.js'
+import { formatDateTime, getTimeZoneOffsetMinutes, normalizeTimestamp as normalizeMetricTimestamp } from '../utils/time.js'
 import useTheme from '../composables/useTheme'
 import { isDisabledProbeMetric } from '../utils/server.js'
 import { resolvePlaybackCursor } from '../utils/playback.js'
@@ -887,23 +887,39 @@ const trafficRows = computed(() => {
   }
   return rows
 })
+const trafficResetMinutes = computed(() => {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(server.value.reset_time || '').trim())
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null
+})
 const trafficCycle = computed(() => {
   const resetDay = trafficResetDay.value
-  const now = new Date()
+  const resetMinutes = trafficResetMinutes.value
+  const nowMs = Date.now()
+  // Work in wall-clock time (read through the UTC getters): the panel time
+  // zone once a reset time is set, since the agent resets at that time there,
+  // otherwise the browser's own clock as before.
+  const offsetMinutes = resetMinutes === null
+    ? -new Date(nowMs).getTimezoneOffset()
+    : getTimeZoneOffsetMinutes(config.value?.notification_timezone || 'UTC', new Date(nowMs))
+  const now = new Date(nowMs + offsetMinutes * 60000)
+  const minute = resetMinutes ?? 0
   const resetDate = (year, month) => {
-    const lastDay = new Date(year, month + 1, 0).getDate()
-    return resetDay <= lastDay ? new Date(year, month, resetDay) : new Date(year, month + 1, 1)
+    const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+    return resetDay <= lastDay
+      ? new Date(Date.UTC(year, month, resetDay, 0, minute))
+      : new Date(Date.UTC(year, month + 1, 1, 0, minute))
   }
-  let start = resetDate(now.getFullYear(), now.getMonth())
-  if (start > now) start = resetDate(now.getFullYear(), now.getMonth() - 1)
-  let end = resetDate(start.getFullYear(), start.getMonth() + 1)
-  if (end <= start) end = resetDate(start.getFullYear(), start.getMonth() + 2)
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  let start = resetDate(now.getUTCFullYear(), now.getUTCMonth())
+  if (start > now) start = resetDate(now.getUTCFullYear(), now.getUTCMonth() - 1)
+  let end = resetDate(start.getUTCFullYear(), start.getUTCMonth() + 1)
+  if (end <= start) end = resetDate(start.getUTCFullYear(), start.getUTCMonth() + 2)
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
   const pad = value => String(value).padStart(2, '0')
+  const timeText = resetMinutes === null ? '' : ` ${pad(Math.floor(minute / 60))}:${pad(minute % 60)}`
   return {
-    startText: `${pad(start.getMonth() + 1)}-${pad(start.getDate())}`,
-    endText: `${pad(end.getMonth() + 1)}-${pad(end.getDate())}`,
-    daysLeft: Math.max(0, Math.round((end - today) / 86400000)),
+    startText: `${pad(start.getUTCMonth() + 1)}-${pad(start.getUTCDate())}${timeText}`,
+    endText: `${pad(end.getUTCMonth() + 1)}-${pad(end.getUTCDate())}${timeText}`,
+    daysLeft: Math.max(0, Math.floor((end - today) / 86400000)),
     elapsedDays: Math.max(0, (now - start) / 86400000),
     totalDays: Math.round((end - start) / 86400000)
   }

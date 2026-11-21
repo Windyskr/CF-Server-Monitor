@@ -1,12 +1,13 @@
 import { md5Hash } from './common.js';
 import { isWssReportConfigured } from './settings.js';
 
-export const AGENT_CONFIG_SCHEMA_VERSION = 7;
+export const AGENT_CONFIG_SCHEMA_VERSION = 8;
 export const AGENT_CONFIG_LEGACY_SCHEMA_VERSION = 3;
 export const AGENT_CONFIG_CONNECTION_MODE_SCHEMA_VERSION = 4;
 export const AGENT_CONFIG_WSS_REPORT_INTERVAL_SCHEMA_VERSION = 5;
 export const AGENT_CONFIG_PING_MODE_SCHEMA_VERSION = 6;
 export const AGENT_CONFIG_EXTRA_NODES_SCHEMA_VERSION = 7;
+export const AGENT_CONFIG_RESET_TIME_SCHEMA_VERSION = 8;
 export const AGENT_CONFIG_SCHEMA_HEADER = 'X-Agent-Config-Schema';
 export const AGENT_CONFIG_MD5_HEADER = 'X-Agent-Config-Md5';
 export const MAX_TRAFFIC_CORRECTION_GB = 1000000;
@@ -277,6 +278,44 @@ export function correctionAgentToGb(value) {
   return Number(value) / AGENT_CORRECTION_UNITS_PER_GB;
 }
 
+const RESET_TIME_PATTERN = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+
+// A traffic reset time is "HH:MM", or '' for midnight. Returns null when invalid.
+export function normalizeResetTime(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const match = RESET_TIME_PATTERN.exec(text);
+  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null;
+}
+
+export function resetTimeToMinutes(value) {
+  const normalized = normalizeResetTime(value);
+  if (!normalized) return 0;
+  const [hour, minute] = normalized.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+// Minutes east of UTC of an IANA time zone at the given moment (480 for Asia/Shanghai).
+export function getTimeZoneOffsetMinutes(timeZone, date = new Date()) {
+  try {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).formatToParts(date).map(part => [part.type, part.value]));
+    const wallClock = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
+      Number(parts.hour), Number(parts.minute), Number(parts.second));
+    return Math.round((wallClock - Math.floor(date.getTime() / 1000) * 1000) / 60000);
+  } catch (_) {
+    return 0;
+  }
+}
+
 export function buildAgentConfig(server, settings = null, schemaVersion = AGENT_CONFIG_SCHEMA_VERSION) {
   const version = normalizeSchemaVersion(schemaVersion);
   const collectInterval = storedInteger(server?.collect_interval, ALLOWED_COLLECT_INTERVALS, 0);
@@ -350,6 +389,16 @@ export function buildAgentConfig(server, settings = null, schemaVersion = AGENT_
     config.ping_mode = normalizePingMode(server?.ping_mode) || PING_MODE_TCP;
   }
 
+  if (version >= AGENT_CONFIG_RESET_TIME_SCHEMA_VERSION) {
+    // With a reset time, the reset day and time follow the panel time zone;
+    // without one the agent keeps resetting at midnight in its own zone.
+    const resetTime = normalizeResetTime(server?.reset_time) || '';
+    config.reset_time = resetTime;
+    config.reset_utc_offset = resetTime
+      ? String(getTimeZoneOffsetMinutes(settings?.notification_timezone || 'UTC'))
+      : '';
+  }
+
   return config;
 }
 
@@ -377,6 +426,10 @@ export function serializeAgentConfig(config) {
   }
   if (Object.prototype.hasOwnProperty.call(config, 'ping_mode')) {
     serialized += `&ping_mode=${config.ping_mode}`;
+  }
+  if (Object.prototype.hasOwnProperty.call(config, 'reset_time')) {
+    serialized += `&reset_time=${config.reset_time}` +
+      `&reset_utc_offset=${config.reset_utc_offset}`;
   }
   return serialized;
 }

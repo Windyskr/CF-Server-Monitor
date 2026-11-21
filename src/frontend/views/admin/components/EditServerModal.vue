@@ -86,13 +86,16 @@
         </div>
         <div class="form-group flex-1">
           <label class="form-label">
-            {{ trans.trafficResetDay }}
-            <HelpTooltip :text="trans.trafficResetDayTip" />
+            {{ trans.trafficResetDayTime }}
+            <HelpTooltip :text="`${trans.trafficResetTimeTip} ${trans.trafficResetDayTip}`" />
           </label>
-          <select ref="editResetDayRef" name="edit_reset_day" v-model="editForm.reset_day" class="form-select">
-            <option :value="0">0</option>
-            <option v-for="day in 31" :key="day" :value="day">{{ day }}</option>
-          </select>
+          <div class="reset-day-time">
+            <select ref="editResetDayRef" name="edit_reset_day" v-model="editForm.reset_day" class="form-select">
+              <option :value="0">0</option>
+              <option v-for="day in 31" :key="day" :value="day">{{ day }}</option>
+            </select>
+            <input type="time" name="edit_reset_time" autocomplete="off" v-model="editForm.reset_time" class="form-input" :title="trans.trafficResetTime">
+          </div>
         </div>
       </div>
 

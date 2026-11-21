@@ -22,6 +22,7 @@ import {
   normalizeNotificationWebhookMethod,
   debug
 } from '../utils/settings.js';
+import { resetTimeToMinutes } from '../utils/agentConfig.js';
 import { detectBillingCycle, normalizeBillingCycle, renewExpireDateIfNeeded } from '../utils/serverBilling.js';
 import {
   RESOURCE_ALERT_EVALUATE_RULE_BATCH_SIZE,
@@ -2295,12 +2296,14 @@ function getNextTrafficResetSerial(startSerial, resetDay) {
   return NaN;
 }
 
-function getCurrentTrafficCycleInfo(now, resetDay, timezone) {
-  const startSerial = getTrafficCycleStartSerial(now, resetDay, timezone);
+function getCurrentTrafficCycleInfo(now, resetDay, timezone, resetTime = '') {
+  // A reset time moves the cycle boundary from midnight to that time of day.
+  const resetMs = resetTimeToMinutes(resetTime) * 60000;
+  const startSerial = getTrafficCycleStartSerial(now - resetMs, resetDay, timezone);
   if (!Number.isFinite(startSerial)) return { period_start: '未设置' };
   const endSerial = getNextTrafficResetSerial(startSerial, resetDay);
   const todaySerial = getZonedDateSerial(now, timezone);
-  const cycleStartTime = trafficTargetFromDateSerial(startSerial, 0, timezone);
+  const cycleStartTime = trafficTargetFromDateSerial(startSerial, 0, timezone) + resetMs;
   return {
     period_start: formatDateSerial(startSerial),
     ...(Number.isFinite(endSerial) ? {
@@ -2426,7 +2429,7 @@ export async function checkTrafficReports(db, options = {}) {
           ? getCurrentCycleTrafficUsage(metrics)
           : null;
         if (currentCycle) {
-          Object.assign(currentCycle, getCurrentTrafficCycleInfo(now, server.reset_day, settings.notification_timezone));
+          Object.assign(currentCycle, getCurrentTrafficCycleInfo(now, server.reset_day, settings.notification_timezone, server.reset_time));
         }
         const missingBaseline = Boolean(blankTypes?.has(type)) || result.missing.includes(type);
         const previousCycle = type === 'cycle'
