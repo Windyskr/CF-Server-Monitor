@@ -1964,14 +1964,6 @@ function getDisplayWidth(text) {
   return width;
 }
 
-function padDisplayEnd(text, width) {
-  return `${text}${' '.repeat(Math.max(0, width - getDisplayWidth(text)))}`;
-}
-
-function padDisplayStart(text, width) {
-  return `${' '.repeat(Math.max(0, width - getDisplayWidth(text)))}${text}`;
-}
-
 // Entries to render for one usage block: one per interface when the agent
 // reports interfaces, otherwise one aggregate entry using server settings.
 function getUsageEntries(server, usage) {
@@ -2110,88 +2102,113 @@ function buildPlainServerCard(server, usage, label) {
 }
 
 // ---------- Telegram HTML renderer ----------
+// Short labelled lines per server and no <pre> blocks: Telegram draws a copy
+// bar on every code block, and two blocks per server buried the numbers.
 
-function buildPre(rows) {
-  return `<pre>${escapeTelegramHtml(rows.join('\n'))}</pre>`;
-}
+const TRAFFIC_PERIOD_WORDS = { '每日': '昨日', '每周': '上周', '每月': '上月', '周期': '上周期' };
 
-function buildHtmlUsageTable(entries) {
-  const nameWidth = Math.max(0, ...entries.map(entry => getDisplayWidth(entry.name)));
-  const cells = entries.map(entry => {
-    if (entry.usage?.missing) return null;
-    const { rx, tx } = readUsageBytes(entry.usage);
-    return [`↓${formatCompactBytes(rx)}`, `↑${formatCompactBytes(tx)}`, formatCompactBytes(rx + tx)];
-  });
-  const widths = [0, 1, 2].map(column => Math.max(0, ...cells.filter(Boolean).map(row => getDisplayWidth(row[column]))));
-  return buildPre(entries.map((entry, index) => {
-    const name = entry.name ? `${padDisplayEnd(entry.name, nameWidth)}  ` : '';
-    if (!cells[index]) return `${name}暂无数据`;
-    return `${name}${cells[index].map((cell, column) => padDisplayStart(cell, widths[column])).join('  ')}`;
-  }));
-}
-
-function buildHtmlQuotaTable(entries, cycleInfo, options = {}) {
-  const nameWidth = Math.max(0, ...entries.map(entry => getDisplayWidth(entry.name)));
-  const indent = nameWidth > 0 ? ' '.repeat(nameWidth + 2) : '';
-  const rows = [];
-  const notes = [];
-  for (const entry of entries) {
-    const name = entry.name ? `${padDisplayEnd(entry.name, nameWidth)}  ` : '';
-    const quota = computeQuota(entry, cycleInfo);
-    if (quota.missing) {
-      rows.push(`${name}暂无周期基线`);
-      continue;
-    }
-    const details = [];
-    if (options.showDirections) details.push(`↓${formatCompactBytes(quota.rx)} ↑${formatCompactBytes(quota.tx)}`);
-    if (quota.calcLabel) details.push(quota.calcLabel);
-    if (!quota.limitBytes) {
-      rows.push(`${name}${formatGB(quota.charge)}${quota.projected !== null ? ` · 预计 ${formatGB(quota.projected)}` : ''}`);
-      if (details.length > 0) rows.push(`${indent}${details.join(' · ')}`);
-      continue;
-    }
-    rows.push(`${name}${buildUsageBar(quota.ratio)} ${padDisplayStart(quota.percent, 4)}  ${formatGB(quota.charge).replace(/G$/, '')}/${formatLimitGB(quota.limit)}`);
-    details.push(quota.over
-      ? `超额 ${formatGB(quota.charge - quota.limitBytes)}`
-      : `剩 ${formatGB(quota.limitBytes - quota.charge)}`);
-    if (quota.projected !== null && !quota.over) details.push(`预计 ${formatGB(quota.projected)}`);
-    rows.push(`${indent}${details.join(' · ')}`);
-    const label = entry.name || '流量';
-    if (quota.over) {
-      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 已超额 ${formatGB(quota.charge - quota.limitBytes)}</b>`);
-    } else if (quota.projectedOver) {
-      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 预计周期末 ${formatGB(quota.projected)}，将超额</b>`);
-    }
-  }
-  return [buildPre(rows), ...notes];
-}
-
-function buildHtmlServerCard(server, usage, label) {
-  const name = `<b>🖥 ${escapeTelegramHtml(server.name)}</b>`;
-  if (usage.missing) {
-    return [name, `<i>${TRAFFIC_MISSING_LABELS[label] || '暂无上一周期数据'}</i>`];
-  }
+function formatDirections(usage) {
   const { rx, tx } = readUsageBytes(usage);
-  const entries = getUsageEntries(server, usage);
-  const lines = [`${name} · <code>${formatCompactBytes(rx + tx)}</code>`];
-  if (label === '周期') {
-    lines.push(`📅 上周期${usage.period_start ? ` ${formatShortDate(usage.period_start)} → ${formatShortDate(usage.period_end)}` : ''}`);
-    lines.push(...buildHtmlQuotaTable(entries, {}, { showDirections: true }));
+  return `↓${formatCompactBytes(rx)} ↑${formatCompactBytes(tx)}`;
+}
+
+function formatUsageTotal(usage) {
+  const { rx, tx } = readUsageBytes(usage);
+  return formatCompactBytes(rx + tx);
+}
+
+function shortenName(name, maxWidth = 24) {
+  const text = String(name ?? '');
+  if (getDisplayWidth(text) <= maxWidth) return text;
+  let shortened = '';
+  for (const char of text) {
+    if (getDisplayWidth(shortened + char) > maxWidth - 1) break;
+    shortened += char;
+  }
+  return `${shortened.trimEnd()}…`;
+}
+
+// One quota as a phrase, e.g. "436G · 预计 638G" or "100/100G 100% · 超额 0.21G".
+function formatQuotaPhrase(quota) {
+  const calc = quota.calcLabel ? `（${quota.calcLabel}）` : '';
+  if (!quota.limitBytes) {
+    return `${formatGB(quota.charge)}${calc}${quota.projected !== null ? ` · 预计 ${formatGB(quota.projected)}` : ''}`;
+  }
+  const used = `${formatGB(quota.charge).replace(/G$/, '')}/${formatLimitGB(quota.limit)} ${quota.percent}${calc}`;
+  if (quota.over) return `${used} · <b>超额 ${formatGB(quota.charge - quota.limitBytes)}</b>`;
+  if (quota.projectedOver) return `${used} · <b>预计 ${formatGB(quota.projected)}，将超额</b>`;
+  if (quota.projected !== null) return `${used} · 预计 ${formatGB(quota.projected)}`;
+  return `${used} · 剩 ${formatGB(quota.limitBytes - quota.charge)}`;
+}
+
+function pushQuotaAlert(alerts, server, entry, quota) {
+  if (quota.missing || (!quota.over && !quota.projectedOver)) return;
+  const who = escapeTelegramHtml(`${shortenName(server.name)}${entry.name ? ` · ${entry.name}` : ''}`);
+  alerts.push(quota.over
+    ? `⚠️ <b>${who} 已超额 ${formatGB(quota.charge - quota.limitBytes)}</b>`
+    : `⚠️ <b>${who} 预计周期末 ${formatGB(quota.projected)}，将超额</b>`);
+}
+
+function treePrefix(index, count) {
+  return index === count - 1 ? '└ ' : '├ ';
+}
+
+function buildHtmlEntryLines(quotas, formatQuota) {
+  return quotas.map(({ entry, quota }, index) => (
+    `${treePrefix(index, quotas.length)}${escapeTelegramHtml(entry.name)} ${quota.missing ? '<i>暂无数据</i>' : formatQuota(entry, quota)}`
+  ));
+}
+
+function buildHtmlCycleLines(server, cycle, alerts) {
+  if (cycle.missing) return ['本周期 <i>Agent 暂未提供周期数据</i>'];
+  if (!getCycleRangeText(cycle)) return ['本周期 <i>未设置重置日</i>'];
+  const quotas = getUsageEntries(server, cycle).map(entry => ({ entry, quota: computeQuota(entry, cycle) }));
+  for (const { entry, quota } of quotas) pushQuotaAlert(alerts, server, entry, quota);
+  const remaining = getCycleRemainingDays(cycle);
+  const hasLimit = quotas.some(({ quota }) => quota.limitBytes > 0);
+  const remainingText = hasLimit && remaining !== null ? `剩 ${remaining} 天` : '';
+  if (!quotas[0].entry.name) {
+    const { quota } = quotas[0];
+    if (quota.missing) return ['本周期 <i>暂无周期基线</i>'];
+    if (!remainingText) return [`本周期 ${formatQuotaPhrase(quota)}`];
+    return [`本周期 ${remainingText}`, `└ ${formatQuotaPhrase(quota)}`];
+  }
+  return [
+    `本周期${remainingText ? ` ${remainingText}` : ''}`,
+    ...buildHtmlEntryLines(quotas, (_, quota) => formatQuotaPhrase(quota))
+  ];
+}
+
+function buildHtmlServerCard(server, usage, label, alerts) {
+  const lines = [`🖥 <b>${escapeTelegramHtml(server.name)}</b>`];
+  if (usage.missing) {
+    lines.push(`<i>${TRAFFIC_MISSING_LABELS[label] || '暂无上一周期数据'}</i>`);
     return lines;
   }
-  lines.push(buildHtmlUsageTable(entries));
+  const entries = getUsageEntries(server, usage);
+  const hasInterfaces = Boolean(entries[0]?.name);
+
+  if (label === '周期') {
+    const range = usage.period_start ? ` ${formatShortDate(usage.period_start)} → ${formatShortDate(usage.period_end)}` : '';
+    lines.push(`上周期${range} <b>${formatUsageTotal(usage)}</b>（${formatDirections(usage)}）`);
+    const quotas = entries.map(entry => ({ entry, quota: computeQuota(entry, {}) }));
+    if (hasInterfaces) {
+      lines.push(...buildHtmlEntryLines(quotas, (entry, quota) => (
+        quota.limitBytes ? formatQuotaPhrase(quota) : `${formatGB(quota.charge)}（${formatDirections(entry.usage)}）`
+      )));
+    } else if (quotas[0].quota.limitBytes) {
+      lines.push(`限额 ${formatQuotaPhrase(quotas[0].quota)}`);
+    }
+    return lines;
+  }
+
+  const breakdown = hasInterfaces
+    ? `：${entries.map(entry => `${escapeTelegramHtml(entry.name)} ${entry.usage?.missing ? '—' : formatUsageTotal(entry.usage)}`).join(' · ')}`
+    : `（${formatDirections(usage)}）`;
+  lines.push(`${TRAFFIC_PERIOD_WORDS[label] || ''} <b>${formatUsageTotal(usage)}</b>${breakdown}`.trim());
 
   const cycle = label === '每日' ? usage.current_cycle : null;
-  if (cycle) {
-    const range = getCycleRangeText(cycle);
-    const remaining = getCycleRemainingDays(cycle);
-    lines.push(range
-      ? `📅 本周期 ${range}${remaining !== null ? ` · 剩 <b>${remaining}</b> 天` : ''}`
-      : '📅 本周期 <i>未设置重置日</i>');
-    lines.push(...(cycle.missing
-      ? ['<i>Agent 暂未提供周期数据</i>']
-      : buildHtmlQuotaTable(getUsageEntries(server, cycle), cycle)));
-  }
+  if (cycle) lines.push(...buildHtmlCycleLines(server, cycle, alerts));
   return lines;
 }
 
@@ -2199,6 +2216,7 @@ export function buildTrafficReportContent(servers, rows, label, meta = {}) {
   const usageByServer = new Map((rows || []).map(row => [row.server_id, row]));
   const lines = [];
   const htmlCards = [];
+  const alerts = [];
   const clients = [];
   let totalRx = 0;
   let totalTx = 0;
@@ -2209,7 +2227,7 @@ export function buildTrafficReportContent(servers, rows, label, meta = {}) {
     if (!usage) continue;
     clients.push(server.name);
     lines.push(...buildPlainServerCard(server, usage, label));
-    htmlCards.push(buildHtmlServerCard(server, usage, label).join('\n'));
+    htmlCards.push(buildHtmlServerCard(server, usage, label, alerts).join('\n'));
     if (usage.missing) continue;
     const { rx, tx } = readUsageBytes(usage);
     totalRx += rx;
@@ -2218,9 +2236,11 @@ export function buildTrafficReportContent(servers, rows, label, meta = {}) {
   }
 
   if (lines.length === 0) return null;
+  // Alerts and the total go first so they are seen without scrolling.
+  const htmlHead = [...alerts];
   if (measuredCount > 1) {
     lines.push(TRAFFIC_REPORT_DIVIDER, formatUsageLine('总计  ', { rx_bytes: totalRx, tx_bytes: totalTx }));
-    htmlCards.push(`<b>Σ 总计</b>  <code>↓${formatCompactBytes(totalRx)} ↑${formatCompactBytes(totalTx)} = ${formatCompactBytes(totalRx + totalTx)}</code>`);
+    htmlHead.push(`Σ ${TRAFFIC_PERIOD_WORDS[label] || ''}合计 <b>${formatCompactBytes(totalRx + totalTx)}</b>（↓${formatCompactBytes(totalRx)} ↑${formatCompactBytes(totalTx)}）`);
   }
   const message = lines.join('\n');
   return {
@@ -2231,7 +2251,7 @@ export function buildTrafficReportContent(servers, rows, label, meta = {}) {
       clients,
       count: clients.length,
       message,
-      telegram_html: htmlCards.join('\n\n'),
+      telegram_html: [htmlHead.join('\n'), ...htmlCards].filter(Boolean).join('\n\n'),
       telegram_dashboard_button: true
     }
   };
