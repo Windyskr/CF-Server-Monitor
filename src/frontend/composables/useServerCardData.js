@@ -1,5 +1,5 @@
 import { computed } from 'vue'
-import { formatBytes, getFlagRegionCode, isServerOnline } from '../utils/api'
+import { formatBytes, formatTrafficBytes, getFlagRegionCode, isServerOnline, TRAFFIC_BYTES_PER_GB } from '../utils/api'
 import { getPublicAssetUrl } from '../utils/config'
 import { currentLang, useTranslation } from '../utils/i18n'
 import { LATENCY_WINDOW, PING } from '../utils/constants'
@@ -69,7 +69,7 @@ export const getTrafficUsageBytes = (server) => {
 export const calcTrafficUsagePercent = (server) => {
   const limit = parseFloat(server.traffic_limit) || 0
   if (limit <= 0) return 0
-  const limitBytes = limit * 1024 * 1024 * 1024
+  const limitBytes = limit * TRAFFIC_BYTES_PER_GB
   const usedBytes = getTrafficUsageBytes(server)
   return (usedBytes / limitBytes) * 100
 }
@@ -128,7 +128,7 @@ export function useServerCardData(props) {
   const trafficLimitSummary = computed(() => {
     const limitGb = Number.parseFloat(props.server.traffic_limit) || 0
     if (limitGb <= 0) return null
-    const limitBytes = limitGb * 1024 * 1024 * 1024
+    const limitBytes = limitGb * TRAFFIC_BYTES_PER_GB
     const usedBytes = getTrafficUsageBytes(props.server)
     return {
       usedBytes,
@@ -145,7 +145,7 @@ export function useServerCardData(props) {
   })
   const trafficLimitText = computed(() => {
     if (trafficLimitSummary.value){
-      return `${formatBytes(trafficLimitSummary.value.usedBytes)} / ${formatBytes(trafficLimitSummary.value.limitBytes)}`
+      return `${formatTrafficBytes(trafficLimitSummary.value.usedBytes)} / ${formatTrafficBytes(trafficLimitSummary.value.limitBytes)}`
     }else{
       return `↓ ${totalRxMonthly.value} ↑ ${totalTxMonthly.value}`
     }
@@ -160,15 +160,15 @@ export function useServerCardData(props) {
   const hasPublicIPv4 = computed(() => String(props.server.ip_v4 ?? '').trim() === '1')
   const hasPublicIPv6 = computed(() => String(props.server.ip_v6 ?? '').trim() === '1')
 
-  const netInSpeed = computed(() => formatBytes(props.server.net_in_speed))
-  const netOutSpeed = computed(() => formatBytes(props.server.net_out_speed))
+  const netInSpeed = computed(() => formatTrafficBytes(props.server.net_in_speed))
+  const netOutSpeed = computed(() => formatTrafficBytes(props.server.net_out_speed))
   const tcpConn = computed(() => formatCount(props.server.tcp_conn))
   const udpConn = computed(() => formatCount(props.server.udp_conn))
   const connPair = computed(() => `${tcpConn.value} / ${udpConn.value}`)
-  const totalRx = computed(() => formatBytes(props.server.net_rx))
-  const totalTx = computed(() => formatBytes(props.server.net_tx))
-  const totalRxMonthly = computed(() => formatBytes(props.server.net_rx_monthly))
-  const totalTxMonthly = computed(() => formatBytes(props.server.net_tx_monthly))
+  const totalRx = computed(() => formatTrafficBytes(props.server.net_rx))
+  const totalTx = computed(() => formatTrafficBytes(props.server.net_tx))
+  const totalRxMonthly = computed(() => formatTrafficBytes(props.server.net_rx_monthly))
+  const totalTxMonthly = computed(() => formatTrafficBytes(props.server.net_tx_monthly))
   const priceText = computed(() => formatBillingPrice(props.server, currentLang.value))
 
   const formatDateOnly = (value) => {

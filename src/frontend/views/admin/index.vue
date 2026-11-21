@@ -593,7 +593,7 @@ import EditServerModal from './components/EditServerModal.vue'
 import BatchEditServersModal from './components/BatchEditServersModal.vue'
 import DeleteServerModal from './components/DeleteServerModal.vue'
 import CopyCommandModal from './components/CopyCommandModal.vue'
-import { adminApi, login, startGithubLogin, logout as apiLogout, upgradeDatabase, clearHistory, getApiBases, fetchConfig } from '../../utils/api'
+import { adminApi, login, startGithubLogin, logout as apiLogout, upgradeDatabase, clearHistory, getApiBases, fetchConfig, correctionGbToAgent } from '../../utils/api'
 import { hasMultipleApiBases } from '../../utils/config.js'
 import { copyTextToClipboard } from '../../utils/clipboard.js'
 import { t, useTranslation } from '../../utils/i18n'
@@ -1990,8 +1990,8 @@ const getCustomInstallCommand = () => {
     if (customBd.value || explicitEmptyNodes.value.custom_bd) params.push(`-bd='${customBd.value}'`)
     if (node1.value || explicitEmptyNodes.value.node_1) params.push(`-node_1='${node1.value}'`); if (node2.value || explicitEmptyNodes.value.node_2) params.push(`-node_2='${node2.value}'`); if (node3.value || explicitEmptyNodes.value.node_3) params.push(`-node_3='${node3.value}'`); if (node4.value || explicitEmptyNodes.value.node_4) params.push(`-node_4='${node4.value}'`)
     if (networkInterface.value) params.push(`-interface='${networkInterface.value}'`)
-    if (hasCorrectionValue(rxCorrection.value)) params.push(`-rx_correction='${rxCorrection.value}'`)
-    if (hasCorrectionValue(txCorrection.value)) params.push(`-tx_correction='${txCorrection.value}'`)
+    if (hasCorrectionValue(rxCorrection.value)) params.push(`-rx_correction='${correctionGbToAgent(rxCorrection.value)}'`)
+    if (hasCorrectionValue(txCorrection.value)) params.push(`-tx_correction='${correctionGbToAgent(txCorrection.value)}'`)
     const ghUrl = buildGhRawUrl(proxy, '/huilang-me/cfsm-agent/main/install.ps1')
     return `$script = "$env:TEMP\\install-cf-probe.ps1"; Invoke-WebRequest -Uri ${quotePowerShellArg(ghUrl)} -OutFile $script -UseBasicParsing; PowerShell -ExecutionPolicy Bypass -File $script ${params.join(' ')}`
   }
@@ -2015,8 +2015,8 @@ const getCustomInstallCommand = () => {
   if (customBd.value || explicitEmptyNodes.value.custom_bd) params.push(`-bd='${customBd.value}'`)
   if (node1.value || explicitEmptyNodes.value.node_1) params.push(`-node_1='${node1.value}'`); if (node2.value || explicitEmptyNodes.value.node_2) params.push(`-node_2='${node2.value}'`); if (node3.value || explicitEmptyNodes.value.node_3) params.push(`-node_3='${node3.value}'`); if (node4.value || explicitEmptyNodes.value.node_4) params.push(`-node_4='${node4.value}'`)
   if (networkInterface.value) params.push(`-interface=${networkInterface.value}`)
-  if (hasCorrectionValue(rxCorrection.value)) params.push(`-rx_correction=${rxCorrection.value}`)
-  if (hasCorrectionValue(txCorrection.value)) params.push(`-tx_correction=${txCorrection.value}`)
+  if (hasCorrectionValue(rxCorrection.value)) params.push(`-rx_correction=${correctionGbToAgent(rxCorrection.value)}`)
+  if (hasCorrectionValue(txCorrection.value)) params.push(`-tx_correction=${correctionGbToAgent(txCorrection.value)}`)
   const ghUrl = buildGhRawUrl(proxy, '/huilang-me/cfsm-agent/main/install.sh')
   const installCommand = `curl -fsSL ${quotePosixShellArg(ghUrl)} | sh -s -- ${params.join(' ')}`
   if (!isDedicatedUserInstall) return installCommand

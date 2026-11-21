@@ -145,13 +145,14 @@ function formatDateSerial(serial) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
+// Traffic uses decimal units (1 GB = 10^9 bytes), the way providers bill it.
 function formatTrafficBytes(value) {
   const bytes = Math.max(0, Number(value) || 0);
   const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
   let size = bytes;
   let unit = 0;
-  while (size >= 1024 && unit < units.length - 1) {
-    size /= 1024;
+  while (size >= 1000 && unit < units.length - 1) {
+    size /= 1000;
     unit += 1;
   }
   return `${size.toFixed(unit === 0 || size >= 100 ? 0 : size >= 10 ? 1 : 2)} ${units[unit]}`;
@@ -1887,7 +1888,7 @@ function getInterfaceTrafficSettings(server) {
   }
 }
 
-const GIB = 1024 * 1024 * 1024;
+const BYTES_PER_GB = 1e9;
 const TRAFFIC_REPORT_DIVIDER = '━━━━━━━━━━━━━━';
 const TRAFFIC_CALC_TYPE_LABELS = { dl: '仅下行', ul: '仅上行', max: '取大值' };
 const TRAFFIC_MISSING_LABELS = {
@@ -1902,12 +1903,12 @@ function formatCompactBytes(value) {
   return text.replace(/ ([KMGTP])?B$/, (_, unit) => unit || 'B');
 }
 
-function formatGiB(bytes) {
-  const value = Math.max(0, Number(bytes) || 0) / GIB;
+function formatGB(bytes) {
+  const value = Math.max(0, Number(bytes) || 0) / BYTES_PER_GB;
   return `${value >= 100 ? value.toFixed(0) : value >= 10 ? value.toFixed(1) : value.toFixed(2)}G`;
 }
 
-function formatLimitGiB(limit) {
+function formatLimitGB(limit) {
   return `${Number(limit.toFixed(2))}G`;
 }
 
@@ -1997,7 +1998,7 @@ function computeQuota(entry, cycleInfo = {}) {
   const { rx, tx } = readUsageBytes(entry.usage);
   const charge = getTrafficCharge(rx, tx, entry.settings);
   const limit = Number(entry.settings?.traffic_limit);
-  const limitBytes = Number.isFinite(limit) && limit > 0 ? limit * GIB : 0;
+  const limitBytes = Number.isFinite(limit) && limit > 0 ? limit * BYTES_PER_GB : 0;
   const elapsedDays = Number(cycleInfo.elapsed_days);
   const totalDays = Number(cycleInfo.days_total);
   const projected = elapsedDays >= 1 && totalDays > 0 ? charge / elapsedDays * totalDays : null;
@@ -2059,17 +2060,17 @@ function buildPlainQuotaLines(entries, cycleInfo, options = {}) {
       ? `${indent}↓${formatCompactBytes(quota.rx)} ↑${formatCompactBytes(quota.tx)}`
       : null;
     if (!quota.limitBytes) {
-      lines.push(`${head}${formatGiB(quota.charge)}${calcSuffix}${quota.projected !== null ? ` · 预计 ${formatGiB(quota.projected)}` : ''}`);
+      lines.push(`${head}${formatGB(quota.charge)}${calcSuffix}${quota.projected !== null ? ` · 预计 ${formatGB(quota.projected)}` : ''}`);
       if (directionLine) lines.push(directionLine);
       continue;
     }
-    lines.push(`${head}${formatGiB(quota.charge)} / ${formatLimitGiB(quota.limit)}${calcSuffix}`);
+    lines.push(`${head}${formatGB(quota.charge)} / ${formatLimitGB(quota.limit)}${calcSuffix}`);
     if (directionLine) lines.push(directionLine);
     lines.push(`${indent}${buildUsageBar(quota.ratio)} ${quota.percent} · ${quota.over
-      ? `⚠️ 超额 ${formatGiB(quota.charge - quota.limitBytes)}`
-      : `剩 ${formatGiB(quota.limitBytes - quota.charge)}`}`);
+      ? `⚠️ 超额 ${formatGB(quota.charge - quota.limitBytes)}`
+      : `剩 ${formatGB(quota.limitBytes - quota.charge)}`}`);
     if (quota.projected !== null && !quota.over) {
-      lines.push(`${indent}${quota.projectedOver ? '⚠️ ' : ''}预计周期末 ${formatGiB(quota.projected)}${quota.projectedOver ? '，将超额' : ''}`);
+      lines.push(`${indent}${quota.projectedOver ? '⚠️ ' : ''}预计周期末 ${formatGB(quota.projected)}${quota.projectedOver ? '，将超额' : ''}`);
     }
   }
   return lines;
@@ -2144,21 +2145,21 @@ function buildHtmlQuotaTable(entries, cycleInfo, options = {}) {
     if (options.showDirections) details.push(`↓${formatCompactBytes(quota.rx)} ↑${formatCompactBytes(quota.tx)}`);
     if (quota.calcLabel) details.push(quota.calcLabel);
     if (!quota.limitBytes) {
-      rows.push(`${name}${formatGiB(quota.charge)}${quota.projected !== null ? ` · 预计 ${formatGiB(quota.projected)}` : ''}`);
+      rows.push(`${name}${formatGB(quota.charge)}${quota.projected !== null ? ` · 预计 ${formatGB(quota.projected)}` : ''}`);
       if (details.length > 0) rows.push(`${indent}${details.join(' · ')}`);
       continue;
     }
-    rows.push(`${name}${buildUsageBar(quota.ratio)} ${padDisplayStart(quota.percent, 4)}  ${formatGiB(quota.charge).replace(/G$/, '')}/${formatLimitGiB(quota.limit)}`);
+    rows.push(`${name}${buildUsageBar(quota.ratio)} ${padDisplayStart(quota.percent, 4)}  ${formatGB(quota.charge).replace(/G$/, '')}/${formatLimitGB(quota.limit)}`);
     details.push(quota.over
-      ? `超额 ${formatGiB(quota.charge - quota.limitBytes)}`
-      : `剩 ${formatGiB(quota.limitBytes - quota.charge)}`);
-    if (quota.projected !== null && !quota.over) details.push(`预计 ${formatGiB(quota.projected)}`);
+      ? `超额 ${formatGB(quota.charge - quota.limitBytes)}`
+      : `剩 ${formatGB(quota.limitBytes - quota.charge)}`);
+    if (quota.projected !== null && !quota.over) details.push(`预计 ${formatGB(quota.projected)}`);
     rows.push(`${indent}${details.join(' · ')}`);
     const label = entry.name || '流量';
     if (quota.over) {
-      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 已超额 ${formatGiB(quota.charge - quota.limitBytes)}</b>`);
+      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 已超额 ${formatGB(quota.charge - quota.limitBytes)}</b>`);
     } else if (quota.projectedOver) {
-      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 预计周期末 ${formatGiB(quota.projected)}，将超额</b>`);
+      notes.push(`⚠️ <b>${escapeTelegramHtml(label)} 预计周期末 ${formatGB(quota.projected)}，将超额</b>`);
     }
   }
   return [buildPre(rows), ...notes];

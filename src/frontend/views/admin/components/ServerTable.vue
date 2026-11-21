@@ -146,8 +146,8 @@
               <span
                 class="spec-text"
                 :class="{ 'spec-copied': isSpecCopied(server, 'traffic_limit') }"
-                @click.stop="emitCopySpec(server, 'traffic_limit', server.traffic_limit ? formatBytes(server.traffic_limit * 1024 * 1024 * 1024) : '')"
-              >{{ server.traffic_limit ? formatBytes(server.traffic_limit * 1024 * 1024 * 1024) : '-' }}</span>
+                @click.stop="emitCopySpec(server, 'traffic_limit', server.traffic_limit ? formatTrafficBytes(server.traffic_limit * TRAFFIC_BYTES_PER_GB) : '')"
+              >{{ server.traffic_limit ? formatTrafficBytes(server.traffic_limit * TRAFFIC_BYTES_PER_GB) : '-' }}</span>
             </td>
             <td>
               <span
@@ -177,7 +177,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { getFlagRegionCode, formatBytes } from '../../../utils/api'
+import { getFlagRegionCode, formatTrafficBytes, TRAFFIC_BYTES_PER_GB } from '../../../utils/api'
 import { getPublicAssetUrl } from '../../../utils/config'
 import { currentLang } from '../../../utils/i18n'
 import { detectBillingCycle, detectCurrencySymbol, getBillingCycleOption, isEnabledFlag, isFreePrice, normalizeCurrency, normalizePrice } from '../../../utils/server.js'

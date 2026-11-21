@@ -21,6 +21,7 @@ import {
   AGENT_CONFIG_LEGACY_SCHEMA_VERSION,
   AGENT_CONFIG_SCHEMA_HEADER,
   AGENT_CONFIG_SCHEMA_VERSION,
+  correctionAgentToGb,
   DEFAULT_WSS_REPORT_INTERVAL,
   describeAgentConfig,
   normalizeWssReportInterval,
@@ -1054,7 +1055,7 @@ export class MetricsBroadcaster {
         AND (rx_correction IS NOT NULL OR tx_correction IS NOT NULL)
         AND ABS(COALESCE(rx_correction, 0) - ?) < 0.000001
         AND ABS(COALESCE(tx_correction, 0) - ?) < 0.000001
-    `).bind(serverId, ackRx, ackTx).run();
+    `).bind(serverId, correctionAgentToGb(ackRx), correctionAgentToGb(ackTx)).run();
     clearServerDetailCache();
     this.agentServerDetails.delete(serverId);
     return { ok: true };

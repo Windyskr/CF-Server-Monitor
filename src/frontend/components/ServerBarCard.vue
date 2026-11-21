@@ -96,7 +96,7 @@
         <div class="stat-content">
           <span class="net-down">▼ {{ totalRxMonthly }}</span>
           <span class="net-up">▲ {{ totalTxMonthly }}</span>
-          <span v-if="sysConfig.show_tf && server.traffic_limit" class="stat-limit">/ 📦 {{ formatBytes(server.traffic_limit * 1024 * 1024 * 1024) }}</span>
+          <span v-if="sysConfig.show_tf && server.traffic_limit" class="stat-limit">/ 📦 {{ formatTrafficBytes(server.traffic_limit * TRAFFIC_BYTES_PER_GB) }}</span>
         </div>
       </div>
     </div>
@@ -121,6 +121,7 @@
 import OsIcon from './OsIcon.vue'
 import ServerLatencyPanel from './ServerLatencyPanel.vue'
 import { DEFAULT_SERVER_CARD_CONFIG, useServerCardData } from '../composables/useServerCardData'
+import { formatTrafficBytes, TRAFFIC_BYTES_PER_GB } from '../utils/api'
 
 const props = defineProps({
   server: {
@@ -170,7 +171,6 @@ const {
   hasPingData,
   threeNetDetails,
   hasThreeNetDetails,
-  getPublicAssetUrl,
-  formatBytes
+  getPublicAssetUrl
 } = useServerCardData(props)
 </script>

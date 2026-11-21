@@ -129,15 +129,15 @@
       <div class="stat-item">
         <div class="stat-label">{{ trans.totalTraffic }}</div>
         <div class="stat-main-value stat-main-value-sm stat-pair">
-          <span>↓ {{ formatBytes(stats.globalNetRx) }}</span>
-          <span>↑ {{ formatBytes(stats.globalNetTx) }}</span>
+          <span>↓ {{ formatTrafficBytes(stats.globalNetRx) }}</span>
+          <span>↑ {{ formatTrafficBytes(stats.globalNetTx) }}</span>
         </div>
       </div>
       <div class="stat-item">
         <div class="stat-label">{{ trans.realtimeSpeed }}</div>
         <div class="stat-main-value stat-main-value-sm stat-pair">
-          <span class="stat-net-down-color">↓ {{ formatBytes(stats.globalSpeedIn) }}/s</span>
-          <span class="stat-net-up-color">↑ {{ formatBytes(stats.globalSpeedOut) }}/s</span>
+          <span class="stat-net-down-color">↓ {{ formatTrafficBytes(stats.globalSpeedIn) }}/s</span>
+          <span class="stat-net-up-color">↑ {{ formatTrafficBytes(stats.globalSpeedOut) }}/s</span>
         </div>
       </div>
       <div
@@ -267,8 +267,8 @@
               <td class="table-conn-cell">
                 <span class="conn-pair">{{ formatConnPair(server) }}</span>
               </td>
-              <td>{{ formatBytes(server.net_in_speed) }}/s</td>
-              <td>{{ formatBytes(server.net_out_speed) }}/s</td>
+              <td>{{ formatTrafficBytes(server.net_in_speed) }}/s</td>
+              <td>{{ formatTrafficBytes(server.net_out_speed) }}/s</td>
               <td class="update-time label-small">{{ getUpdateTime(server.last_updated) }}</td>
             </tr>
           </tbody>
@@ -375,7 +375,7 @@ import ServerRingCard from '../components/ServerRingCard.vue'
 import Footer from '../components/Footer.vue'
 import OsIcon from '../components/OsIcon.vue'
 import LiveConnectionTimeoutModal from '../components/LiveConnectionTimeoutModal.vue'
-import { fetchConfig, fetchServersAll, fetchServersAllWithProgress, formatBytes, createLiveSocket, getFlagRegionCode, getApiBases, isServerOnline, normalizeLiveSocketTimeoutMinutes } from '../utils/api.js'
+import { fetchConfig, fetchServersAll, fetchServersAllWithProgress, formatTrafficBytes, createLiveSocket, getFlagRegionCode, getApiBases, isServerOnline, normalizeLiveSocketTimeoutMinutes } from '../utils/api.js'
 import { calcTrafficUsagePercent, getUsageColor } from '../composables/useServerCardData'
 import { getTitle, hasMultipleApiBases, getPublicAssetUrl } from '../utils/config'
 import { currentLang, useTranslation } from '../utils/i18n.js'

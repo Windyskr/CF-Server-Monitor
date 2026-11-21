@@ -263,6 +263,20 @@ export function normalizeTrafficCorrection(value) {
   return isValidTrafficCorrection(value) ? Number(value) : 0;
 }
 
+// Corrections are entered and stored in decimal GB (10^9 bytes), like every
+// traffic figure in the panel, but agents (Go and shell) multiply the value
+// they receive by 1024^3. Convert whenever a correction goes to or comes back
+// from an agent. Keep in sync with correctionGbToAgent in src/frontend/utils/api.js.
+const AGENT_CORRECTION_UNITS_PER_GB = 1e9 / 1024 ** 3;
+
+export function correctionGbToAgent(gb) {
+  return Number((Number(gb) * AGENT_CORRECTION_UNITS_PER_GB).toFixed(9));
+}
+
+export function correctionAgentToGb(value) {
+  return Number(value) / AGENT_CORRECTION_UNITS_PER_GB;
+}
+
 export function buildAgentConfig(server, settings = null, schemaVersion = AGENT_CONFIG_SCHEMA_VERSION) {
   const version = normalizeSchemaVersion(schemaVersion);
   const collectInterval = storedInteger(server?.collect_interval, ALLOWED_COLLECT_INTERVALS, 0);
@@ -382,8 +396,8 @@ export async function describeAgentConfig(server, settings = null, schemaVersion
   let correction = null;
   if (hasCorrection) {
     correction = {
-      rx_correction: normalizeTrafficCorrection(server.rx_correction),
-      tx_correction: normalizeTrafficCorrection(server.tx_correction)
+      rx_correction: correctionGbToAgent(normalizeTrafficCorrection(server.rx_correction)),
+      tx_correction: correctionGbToAgent(normalizeTrafficCorrection(server.tx_correction))
     };
   }
 

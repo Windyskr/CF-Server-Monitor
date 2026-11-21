@@ -18,6 +18,7 @@ import { checkWebSocketAuth } from '../middleware/auth.js';
 import {
   AGENT_CONFIG_MD5_HEADER,
   AGENT_CONFIG_SCHEMA_HEADER,
+  correctionAgentToGb,
   describeAgentConfig,
   isValidTrafficCorrection,
   normalizeAgentConfigSchemaVersion,
@@ -603,7 +604,7 @@ export async function handleUpdate(request, env, ctx) {
           AND (rx_correction IS NOT NULL OR tx_correction IS NOT NULL)
           AND ABS(COALESCE(rx_correction, 0) - ?) < 0.000001
           AND ABS(COALESCE(tx_correction, 0) - ?) < 0.000001
-      `).bind(id, ackRx, ackTx).run();
+      `).bind(id, correctionAgentToGb(ackRx), correctionAgentToGb(ackTx)).run();
       clearServerDetailCache();
       scheduleAgentConfigChanged(env, ctx, id);
 

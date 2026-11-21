@@ -103,12 +103,12 @@
         <div v-for="row in trafficRows" :key="row.key" class="traffic-row">
           <div class="traffic-row-head">
             <span class="traffic-row-name">{{ row.label }}<span v-if="row.sub" class="traffic-row-sub">{{ row.sub }}</span></span>
-            <span class="traffic-row-speed">↓ {{ formatBytes(row.inSpeed) }}/s · ↑ {{ formatBytes(row.outSpeed) }}/s</span>
+            <span class="traffic-row-speed">↓ {{ formatTrafficBytes(row.inSpeed) }}/s · ↑ {{ formatTrafficBytes(row.outSpeed) }}/s</span>
           </div>
           <div class="traffic-row-usage">
-            <span>{{ trans.trafficCycleUsage || 'This cycle' }} ↓ {{ formatBytes(row.rxCycle) }} · ↑ {{ formatBytes(row.txCycle) }}</span>
+            <span>{{ trans.trafficCycleUsage || 'This cycle' }} ↓ {{ formatTrafficBytes(row.rxCycle) }} · ↑ {{ formatTrafficBytes(row.txCycle) }}</span>
             <span class="traffic-row-charge" :class="row.level">
-              {{ formatBytes(row.charge) }}<template v-if="row.limitBytes"> / {{ formatBytes(row.limitBytes) }} · {{ row.percent.toFixed(row.percent >= 10 ? 0 : 1) }}%</template>
+              {{ formatTrafficBytes(row.charge) }}<template v-if="row.limitBytes"> / {{ formatTrafficBytes(row.limitBytes) }} · {{ row.percent.toFixed(row.percent >= 10 ? 0 : 1) }}%</template>
               <template v-if="row.calcLabel"> · {{ row.calcLabel }}</template>
             </span>
           </div>
@@ -117,9 +117,9 @@
             <span class="traffic-bar-used" :class="row.level" :style="{ width: `${Math.min(100, row.percent)}%` }"></span>
           </div>
           <div v-if="row.projected !== null" class="traffic-row-forecast" :class="row.projectedLevel">
-            <span>{{ trans.trafficForecast || 'Projected at cycle end' }} {{ formatBytes(row.projected) }}<template v-if="row.limitBytes"> · {{ row.projectedPercent.toFixed(0) }}%</template></span>
-            <span v-if="row.limitBytes && row.projected > row.limitBytes">⚠️ {{ (trans.trafficForecastOver || 'over by {amount}').replace('{amount}', formatBytes(row.projected - row.limitBytes)) }}</span>
-            <span v-else-if="row.limitBytes">{{ (trans.trafficForecastLeft || '{amount} left').replace('{amount}', formatBytes(row.limitBytes - row.projected)) }}</span>
+            <span>{{ trans.trafficForecast || 'Projected at cycle end' }} {{ formatTrafficBytes(row.projected) }}<template v-if="row.limitBytes"> · {{ row.projectedPercent.toFixed(0) }}%</template></span>
+            <span v-if="row.limitBytes && row.projected > row.limitBytes">⚠️ {{ (trans.trafficForecastOver || 'over by {amount}').replace('{amount}', formatTrafficBytes(row.projected - row.limitBytes)) }}</span>
+            <span v-else-if="row.limitBytes">{{ (trans.trafficForecastLeft || '{amount} left').replace('{amount}', formatTrafficBytes(row.limitBytes - row.projected)) }}</span>
           </div>
         </div>
       </div>
@@ -169,8 +169,8 @@
           </span>
           <div class="chart-header-actions">
             <div class="net-indicator">
-              <span class="net-down">▼ {{ formatBytes(server.net_in_speed) }}/s</span>
-              <span class="net-up">▲ {{ formatBytes(server.net_out_speed) }}/s</span>
+              <span class="net-down">▼ {{ formatTrafficBytes(server.net_in_speed) }}/s</span>
+              <span class="net-up">▲ {{ formatTrafficBytes(server.net_out_speed) }}/s</span>
             </div>
             <ChartExpandButton :expanded="isChartExpanded('net')" @toggle="toggleChartExpanded('net')" />
           </div>
@@ -416,7 +416,7 @@ import TerminalHeader from '../components/TerminalHeader.vue'
 import Footer from '../components/Footer.vue'
 import OsIcon from '../components/OsIcon.vue'
 import LiveConnectionTimeoutModal from '../components/LiveConnectionTimeoutModal.vue'
-import { fetchServerDetail, fetchAllHistory, fetchConfig, formatBytes, isAdminLoggedIn, createLiveSocket, getFlagRegionCode, isServerOnline, normalizeLiveSocketTimeoutMinutes } from '../utils/api.js'
+import { fetchServerDetail, fetchAllHistory, fetchConfig, formatBytes, formatTrafficBytes, TRAFFIC_BYTES_PER_GB, isAdminLoggedIn, createLiveSocket, getFlagRegionCode, isServerOnline, normalizeLiveSocketTimeoutMinutes } from '../utils/api.js'
 import { getPublicAssetUrl } from '../utils/config.js'
 import Chart from 'chart.js/auto'
 import 'chartjs-adapter-date-fns'
@@ -845,7 +845,7 @@ const buildTrafficRow = (key, label, sub, metrics, settings) => {
   const txCycle = Number(metrics.net_tx_monthly) || 0
   const calcType = settings?.traffic_calc_type || 'total'
   const charge = calcType === 'dl' ? rxCycle : calcType === 'ul' ? txCycle : calcType === 'max' ? Math.max(rxCycle, txCycle) : rxCycle + txCycle
-  const limitBytes = (Number(settings?.traffic_limit) || 0) * 1024 * 1024 * 1024
+  const limitBytes = (Number(settings?.traffic_limit) || 0) * TRAFFIC_BYTES_PER_GB
   const percent = limitBytes > 0 ? charge / limitBytes * 100 : 0
   // Linear projection to the end of the cycle; skipped during the first day
   // when the sample is too small to extrapolate.
@@ -1085,7 +1085,7 @@ const CHART_DEFS = [
     })
   },
   { key: 'proc', ref: () => procChartRef.value, datasets: [ds('Processes', '#f778ba', { fill: true })] },
-  { key: 'net', ref: () => netChartRef.value, datasets: [ds('Download', '#00d4aa', { fill: true }), ds('Upload', '#4da6ff', { fill: true })], legend: true, formatValue: (v) => formatBytes(v) + '/s', tickFormat: (v) => formatBytes(v) },
+  { key: 'net', ref: () => netChartRef.value, datasets: [ds('Download', '#00d4aa', { fill: true }), ds('Upload', '#4da6ff', { fill: true })], legend: true, formatValue: (v) => formatTrafficBytes(v) + '/s', tickFormat: (v) => formatTrafficBytes(v) },
   { key: 'conn', ref: () => connChartRef.value, datasets: [ds('TCP', '#b392f0'), ds('UDP', '#f778ba')], legend: true },
   { key: 'ping', ref: () => pingChartRef.value, datasets: ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'node_4'].map((key, i) => ds(pingLabel(key), ['#00d4aa', '#ffb870', '#4da6ff', '#b392f0', '#ff7b72', '#79c0ff', '#7ee787', '#ffa657'][i], { tension: 0.3 })), unit: ' ms', legend: true },
   { key: 'loss', ref: () => lossChartRef.value, datasets: ['ct', 'cu', 'cm', 'bd', 'node_1', 'node_2', 'node_3', 'node_4'].map((key, i) => ds(pingLabel(key), ['#00d4aa', '#ffb870', '#4da6ff', '#b392f0', '#ff7b72', '#79c0ff', '#7ee787', '#ffa657'][i], { tension: 0.3 })), unit: '%', legend: true },

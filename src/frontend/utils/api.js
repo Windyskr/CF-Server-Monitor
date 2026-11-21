@@ -271,15 +271,27 @@ export const getFlagRegionCode = (region) => {
   return code.toLowerCase()
 }
 
-export const formatBytes = (bytes) => {
+// Network traffic, speeds and traffic limits use decimal units (1 GB = 10^9
+// bytes), the way providers bill and rate traffic. Memory and disk sizes keep
+// the binary steps of formatBytes.
+export const TRAFFIC_BYTES_PER_GB = 1e9
+
+const formatScaledBytes = (bytes, k) => {
   bytes = parseFloat(bytes) || 0
   if (bytes === 0) return '0 B'
-  const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
   const safeIndex = Math.max(0, Math.min(i, sizes.length - 1))
   return parseFloat((bytes / Math.pow(k, safeIndex)).toFixed(1)) + ' ' + sizes[safeIndex]
 }
+
+export const formatBytes = (bytes) => formatScaledBytes(bytes, 1024)
+
+export const formatTrafficBytes = (bytes) => formatScaledBytes(bytes, 1000)
+
+// Agents multiply a traffic correction by 1024^3, while the panel takes it in
+// decimal GB. Keep in sync with correctionGbToAgent in src/utils/agentConfig.js.
+export const correctionGbToAgent = (gb) => Number((Number(gb) * TRAFFIC_BYTES_PER_GB / 1024 ** 3).toFixed(9))
 
 export const isServerOnline = (server, now = Date.now()) => {
   const lastUpdated = normalizeTimestamp(server?.report_timestamp ?? server?.last_updated)

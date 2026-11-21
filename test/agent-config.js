@@ -63,11 +63,12 @@ assert.equal(autoUpdateDescriptor.serialized, expected);
 assert.equal(autoUpdateDescriptor.md5, descriptor.md5);
 
 const correctionDescriptor = await describeAgentConfig({ ...server, rx_correction: null, tx_correction: 5 });
+// 5 GB (10^9 bytes) in the agent's 1024^3 unit.
 assert.deepEqual(correctionDescriptor.correction, {
   rx_correction: 0,
-  tx_correction: 5
+  tx_correction: 4.656612873
 });
-assert.equal(serializeCorrection(correctionDescriptor.correction), '&rx_correction=0&tx_correction=5');
+assert.equal(serializeCorrection(correctionDescriptor.correction), '&rx_correction=0&tx_correction=4.656612873');
 assert.equal(isValidTrafficCorrection('0'), true);
 assert.equal(isValidTrafficCorrection('0.5'), true);
 assert.equal(isValidTrafficCorrection('1000000'), true);
